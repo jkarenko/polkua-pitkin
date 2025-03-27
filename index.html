@@ -226,6 +226,7 @@
         let previousCarPosition = null;
         let defeatFlagged = false;
         let decorations = [];
+        let tireMarks = [];
 
         // Car state
         let carProgress = 0;
@@ -239,8 +240,10 @@
         let engineSound = null;
         let lastAngleChange = 0;
         let carConfig = null;  // Add car configuration state
+        let previousCarAngle = 0; // <--- Add state for previous car angle
+        let isScreeching = false; // <--- Add state for current screech status
         const TURN_THRESHOLD = 0.5;
-        const SOUND_COOLDOWN = 500;
+        const SOUND_COOLDOWN = 500; // We might not need SOUND_COOLDOWN anymore
 
         // --- Helper Functions ---
         function getEventCoords(e) {
@@ -821,6 +824,19 @@
                  ctx.stroke();
              }
 
+            // 2.5 Draw Tire Marks (after trail, before decorations/car)
+            ctx.strokeStyle = 'rgba(40, 40, 40, 0.7)'; // Dark semi-transparent color for lines
+            ctx.lineWidth = 3; // Width of the tire mark lines
+            ctx.lineCap = 'round'; // Make line ends rounded
+            tireMarks.forEach(mark => {
+                if (mark.start && mark.end) { // Ensure we have both points
+                    ctx.beginPath();
+                    ctx.moveTo(mark.start.x, mark.start.y);
+                    ctx.lineTo(mark.end.x, mark.end.y);
+                    ctx.stroke();
+                }
+            });
+
 
             // 3. Create a list of drawable items (decorations, P2 path, car)
             let drawableItems = [...decorations]; // Start with decorations
@@ -891,6 +907,7 @@
             endMarker = null;
             progressMarkers = []; // Clear progress markers
             carTrail = []; // Clear car trail
+            tireMarks = []; // <--- Clear tire marks
             currentPathLength = 0; // Reset path length
             maxAllowedPathLength = 0; // Reset max allowed path length
             fuelConsumed = 0; // Reset fuel consumed
@@ -919,6 +936,7 @@
             }
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            isScreeching = false; // <--- Reset screeching state
         }
 
         // --- Event Handlers ---
@@ -1187,6 +1205,8 @@
             carPosition = { x: 0, y: 0 };
             carAngle = 0;
             carTrail = [];
+            tireMarks = []; // <--- Clear tire marks
+            isScreeching = false; // <--- Reset screeching state
             
             // Stop engine sound if playing
             if (engineSound) {
@@ -1202,6 +1222,7 @@
             // Initialize previous position on the first frame
             if (previousCarPosition === null) {
                 previousCarPosition = { ...carPosition };
+                previousCarAngle = currentCarAngle; // Initialize previous angle too
             }
 
             // --- Fuel Check ---
@@ -1276,17 +1297,69 @@
             carProgress = nextProgress;
             carTrail.push({ ...carPosition });
 
-            // --- Update Car Angle and Sounds (existing logic) ---
+            // --- Update Car Angle and Sounds (Modified logic) ---
             const direction = getDirectionAlongPath(carProgress, player2Path);
             const targetCarAngle = Math.atan2(direction.y, direction.x);
             const angleDiff = targetCarAngle - currentCarAngle;
             const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
 
-            const currentTime = Date.now();
-            if (Math.abs(normalizedDiff) > TURN_THRESHOLD && currentTime - lastAngleChange > SOUND_COOLDOWN) {
+            // Determine if the car should be screeching in this frame
+            const shouldBeScreeching = Math.abs(normalizedDiff) > TURN_THRESHOLD;
+
+            // Check if screeching just started
+            if (shouldBeScreeching && !isScreeching) {
                 playSound('screech');
-                lastAngleChange = currentTime;
+                // No need for sound cooldown check here as it only plays on transition to true
             }
+
+            // Update the screeching state for the current frame
+            isScreeching = shouldBeScreeching;
+
+            // Add tire marks if currently screeching
+            if (isScreeching) {
+                // --- Add Tire Marks ---
+                const carWidth = CAR_CONSTANTS?.WIDTH || 15;
+                const carLength = CAR_CONSTANTS?.HEIGHT || 25;
+                const halfW = carWidth / 2;
+                const halfL = carLength / 2;
+
+                const tireOffsets = [
+                    { x: halfW, y: -halfL }, { x: -halfW, y: -halfL },
+                    { x: halfW, y: halfL }, { x: -halfW, y: halfL }
+                ];
+
+                // Helper function (already exists from previous step)
+                const calculateTirePositions = (centerPos, angle) => {
+                    const cosA = Math.cos(angle);
+                    const sinA = Math.sin(angle);
+                    return tireOffsets.map(offset => {
+                        const rotatedX = offset.x * cosA - offset.y * sinA;
+                        const rotatedY = offset.x * sinA + offset.y * cosA;
+                        return { x: centerPos.x + rotatedX, y: centerPos.y + rotatedY };
+                    });
+                };
+
+                // Calculate positions for current and previous frame
+                const currentTirePositions = calculateTirePositions(carPosition, currentCarAngle);
+                if (previousCarPosition && previousCarAngle !== undefined) {
+                    const previousTirePositions = calculateTirePositions(previousCarPosition, previousCarAngle);
+
+                    // Add a line segment for each tire
+                    for (let i = 0; i < 4; i++) {
+                        // Only add if the tire actually moved significantly (optional optimization)
+                        if (distSq(previousTirePositions[i], currentTirePositions[i]) > 0.1) {
+                             tireMarks.push({
+                                start: previousTirePositions[i],
+                                end: currentTirePositions[i]
+                            });
+                        }
+                    }
+                }
+                // --- End Add Tire Marks ---
+            }
+
+            // Store current angle as previous for the next frame BEFORE updating it
+            previousCarAngle = currentCarAngle;
             currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
 
             if (!engineSound) {
