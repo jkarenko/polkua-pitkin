@@ -916,17 +916,17 @@
                  let markerPoint = null;
                  let markerDirection = null;
 
-                 for (let j = 0; j < smoothedPath.length - 1; j++) {
-                     const segmentLength = dist(smoothedPath[j], smoothedPath[j + 1]);
+                 for (let j = 0; j < player1Path.length - 1; j++) {
+                     const segmentLength = dist(player1Path[j], player1Path[j + 1]);
                      if (accumulatedLength + segmentLength >= targetProgress * player1TotalLength) {
                          const t = (targetProgress * player1TotalLength - accumulatedLength) / segmentLength;
                          markerPoint = {
-                             x: smoothedPath[j].x + t * (smoothedPath[j + 1].x - smoothedPath[j].x),
-                             y: smoothedPath[j].y + t * (smoothedPath[j + 1].y - smoothedPath[j].y)
+                             x: player1Path[j].x + t * (player1Path[j + 1].x - player1Path[j].x),
+                             y: player1Path[j].y + t * (player1Path[j + 1].y - player1Path[j].y)
                          };
                          markerDirection = {
-                             x: smoothedPath[j + 1].x - smoothedPath[j].x,
-                             y: smoothedPath[j + 1].y - smoothedPath[j].y
+                             x: player1Path[j + 1].x - player1Path[j].x,
+                             y: player1Path[j + 1].y - player1Path[j].y
                          };
                          // Normalize direction
                          const length = Math.sqrt(markerDirection.x * markerDirection.x + markerDirection.y * markerDirection.y);
