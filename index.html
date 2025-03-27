@@ -303,23 +303,25 @@
 
 
         // --- Drawing Functions ---
-         function drawPath(path, color, width) {
+         function drawPath(path, color, width, isDrawing = false) {
              if (path.length < 1) return;
              
-             // Draw the outline (black path with slightly larger width)
-             ctx.strokeStyle = 'black';
-             ctx.lineWidth = width + 4; // 2 pixels wider on each side
-             ctx.lineCap = 'round';
-             ctx.lineJoin = 'round';
+             if (!isDrawing) {
+                 // Draw the outline (black path with slightly larger width) only for completed paths
+                 ctx.strokeStyle = 'black';
+                 ctx.lineWidth = width + 4; // 2 pixels wider on each side
+                 ctx.lineCap = 'round';
+                 ctx.lineJoin = 'round';
 
-             ctx.beginPath();
-             ctx.moveTo(path[0].x, path[0].y);
-             for (let i = 1; i < path.length; i++) {
-                 ctx.lineTo(path[i].x, path[i].y);
+                 ctx.beginPath();
+                 ctx.moveTo(path[0].x, path[0].y);
+                 for (let i = 1; i < path.length; i++) {
+                     ctx.lineTo(path[i].x, path[i].y);
+                 }
+                 ctx.stroke();
              }
-             ctx.stroke();
 
-             // Draw the main colored path on top
+             // Draw the main colored path
              ctx.strokeStyle = color;
              ctx.lineWidth = width;
              ctx.lineCap = 'round';
@@ -347,16 +349,15 @@
             if (startMarker && endMarker) {
                 drawCircle(startMarker, startMarker.radius, START_COLOR);
                 drawCircle(endMarker, endMarker.radius, END_COLOR);
-                drawPath(player1Path, P1_COLOR, P1_WIDTH);
-            } else if (player1Path.length > 0 && gameState === 'P1_DRAWING') {
-                // Draw temporary P1 path while drawing
-                drawPath(player1Path, P1_COLOR, P1_WIDTH);
+                drawPath(player1Path, P1_COLOR, P1_WIDTH, false);
+            } else if (player1Path.length > 0) {
+                // Draw P1 path with isDrawing flag based on game state
+                drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === 'P1_DRAWING');
             }
-
 
             // Draw Player 2 path if they are drawing or failed
             if (gameState === 'P2_DRAWING' || gameState === 'P2_WAITING') {
-                 drawPath(player2Path, P2_COLOR, P2_WIDTH);
+                drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
             }
         }
 
@@ -427,7 +428,7 @@
                      gameState = 'P2_DRAWING';
                      statusDiv.textContent = 'Pelaaja 2: Seuraa polkua! Pysy sinisen viivan sisällä!';
                      redrawAll();
-                     drawPath(player2Path, P2_COLOR, P2_WIDTH);
+                     drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
                  } else {
                     statusDiv.textContent = 'Pelaaja 2: Aloita piirtäminen harmaasta ympyrästä!';
                  }
@@ -505,7 +506,7 @@
                         statusDiv.textContent = 'Pelaaja 2 Voitti! Hienosti piirretty! 🎉';
                         playSound('success');
                         redrawAll();
-                        drawPath(player2Path, P2_COLOR, P2_WIDTH);
+                        drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
                     } else {
                         playSound('alarm');
                         resetPlayer2();
