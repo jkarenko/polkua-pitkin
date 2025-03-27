@@ -89,10 +89,12 @@
         const CAR_COLOR = '#FF4444';
         const CAR_SPEED = 0.002; // Speed of car movement (0-1 per frame)
         const CAR_ANIMATION_INTERVAL = 16; // ~60fps
+        const SMOOTHING_WINDOW = 10; // Number of points to use for smoothing
 
         // --- State ---
         let gameState = 'P1_DRAWING'; // 'P1_DRAWING', 'P2_WAITING', 'P2_DRAWING', 'P2_FINISHED', 'CAR_ANIMATING'
         let player1Path = [];
+        let smoothedPath = []; // Add this to store the smoothed path
         let player2Path = [];
         let isDrawing = false;
         let player1TotalLength = 0;
@@ -109,6 +111,10 @@
         let carAnimationFrame = null;
         let carPosition = { x: 0, y: 0 };
         let carAngle = 0;
+        let currentWheelAngle = 0;
+        let currentCarAngle = 0; // Add this to track current car angle
+        const WHEEL_TURN_SPEED = 0.15; // Controls how quickly wheels turn (0-1)
+        const CAR_TURN_SPEED = 0.1; // Controls how quickly car body turns (0-1)
 
         // --- Audio ---
         function initAudio() {
@@ -423,20 +429,26 @@
                 }
             }
             
-            // Calculate wheel angle based on average direction
-            const wheelAngle = Math.atan2(avgDirection.y, avgDirection.x) - angle;
+            // Calculate target wheel angle based on average direction
+            const targetWheelAngle = Math.atan2(avgDirection.y, avgDirection.x) - angle;
+            
+            // Smoothly interpolate current wheel angle towards target
+            const angleDiff = targetWheelAngle - currentWheelAngle;
+            // Normalize angle difference to [-PI, PI]
+            const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
+            currentWheelAngle += normalizedDiff * WHEEL_TURN_SPEED;
             
             // Draw wheels with rotation
             ctx.save();
             ctx.translate(CAR_WIDTH/2 - 10, -CAR_HEIGHT/2);
-            ctx.rotate(wheelAngle);
+            ctx.rotate(currentWheelAngle);
             ctx.fillStyle = '#000';
             ctx.fillRect(-5, -1, 10, 2);
             ctx.restore();
             
             ctx.save();
             ctx.translate(CAR_WIDTH/2 - 10, CAR_HEIGHT/2);
-            ctx.rotate(wheelAngle);
+            ctx.rotate(currentWheelAngle);
             ctx.fillStyle = '#000';
             ctx.fillRect(-5, -1, 10, 2);
             ctx.restore();
@@ -522,35 +534,132 @@
             ctx.restore();
         }
 
+        function smoothPath(path) {
+            if (path.length < 3) return path;
+            
+            const smoothed = [];
+            const halfWindow = Math.floor(SMOOTHING_WINDOW / 2);
+            
+            for (let i = 0; i < path.length; i++) {
+                let sumX = 0;
+                let sumY = 0;
+                let count = 0;
+                
+                // Calculate weighted average of surrounding points
+                for (let j = -halfWindow; j <= halfWindow; j++) {
+                    const idx = i + j;
+                    if (idx >= 0 && idx < path.length) {
+                        // Use triangular weighting (points closer have more influence)
+                        const weight = 1 - Math.abs(j) / (halfWindow + 1);
+                        sumX += path[idx].x * weight;
+                        sumY += path[idx].y * weight;
+                        count += weight;
+                    }
+                }
+                
+                smoothed.push({
+                    x: sumX / count,
+                    y: sumY / count
+                });
+            }
+            
+            return smoothed;
+        }
+
+        function handleP1Done() {
+             if (player1Path.length < 2) {
+                 statusDiv.textContent = "Pelaaja 1: Polku on liian lyhyt! Piirrä pitempi polku.";
+                 return;
+             }
+
+             gameState = 'P2_WAITING';
+             isDrawing = false;
+             doneButton.style.display = 'none';
+             resetButton.style.display = 'inline-block';
+             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
+
+            player1TotalLength = calculatePathLength(player1Path);
+            const markerRadius = P1_WIDTH / 2 * MARKER_RADIUS_FACTOR;
+             startMarker = { ...player1Path[0], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
+             endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
+
+             // Create smoothed path for car to follow
+             smoothedPath = smoothPath(player1Path);
+
+             // Calculate progress markers
+             progressMarkers = [];
+             for (let i = 0; i <= 10; i++) { // 10 segments (0% to 100%)
+                 const targetProgress = i * PROGRESS_INTERVAL;
+                 let accumulatedLength = 0;
+                 let markerPoint = null;
+                 let markerDirection = null;
+
+                 for (let j = 0; j < smoothedPath.length - 1; j++) {
+                     const segmentLength = dist(smoothedPath[j], smoothedPath[j + 1]);
+                     if (accumulatedLength + segmentLength >= targetProgress * player1TotalLength) {
+                         const t = (targetProgress * player1TotalLength - accumulatedLength) / segmentLength;
+                         markerPoint = {
+                             x: smoothedPath[j].x + t * (smoothedPath[j + 1].x - smoothedPath[j].x),
+                             y: smoothedPath[j].y + t * (smoothedPath[j + 1].y - smoothedPath[j].y)
+                         };
+                         markerDirection = {
+                             x: smoothedPath[j + 1].x - smoothedPath[j].x,
+                             y: smoothedPath[j + 1].y - smoothedPath[j].y
+                         };
+                         // Normalize direction
+                         const length = Math.sqrt(markerDirection.x * markerDirection.x + markerDirection.y * markerDirection.y);
+                         markerDirection.x /= length;
+                         markerDirection.y /= length;
+                         break;
+                     }
+                     accumulatedLength += segmentLength;
+                 }
+
+                 if (markerPoint && markerDirection) {
+                     progressMarkers.push({ point: markerPoint, direction: markerDirection });
+                 }
+             }
+
+             redrawAll();
+        }
+
         function getPointAlongPath(progress, path) {
             if (path.length < 2) return path[0];
             
+            // Use smoothed path for car movement
+            const targetPath = path === player1Path ? smoothedPath : path;
+            if (!targetPath || targetPath.length < 2) return path[0];
+            
             let accumulatedLength = 0;
-            for (let i = 0; i < path.length - 1; i++) {
-                const segmentLength = dist(path[i], path[i + 1]);
+            for (let i = 0; i < targetPath.length - 1; i++) {
+                const segmentLength = dist(targetPath[i], targetPath[i + 1]);
                 if (accumulatedLength + segmentLength >= progress * player1TotalLength) {
                     const t = (progress * player1TotalLength - accumulatedLength) / segmentLength;
                     return {
-                        x: path[i].x + t * (path[i + 1].x - path[i].x),
-                        y: path[i].y + t * (path[i + 1].y - path[i].y)
+                        x: targetPath[i].x + t * (targetPath[i + 1].x - targetPath[i].x),
+                        y: targetPath[i].y + t * (targetPath[i + 1].y - targetPath[i].y)
                     };
                 }
                 accumulatedLength += segmentLength;
             }
-            return path[path.length - 1];
+            return targetPath[targetPath.length - 1];
         }
 
         function getDirectionAlongPath(progress, path) {
             if (path.length < 2) return { x: 0, y: 0 };
             
+            // Use smoothed path for car movement
+            const targetPath = path === player1Path ? smoothedPath : path;
+            if (!targetPath || targetPath.length < 2) return { x: 0, y: 0 };
+            
             let accumulatedLength = 0;
-            for (let i = 0; i < path.length - 1; i++) {
-                const segmentLength = dist(path[i], path[i + 1]);
+            for (let i = 0; i < targetPath.length - 1; i++) {
+                const segmentLength = dist(targetPath[i], targetPath[i + 1]);
                 if (accumulatedLength + segmentLength >= progress * player1TotalLength) {
                     const t = (progress * player1TotalLength - accumulatedLength) / segmentLength;
                     const direction = {
-                        x: path[i + 1].x - path[i].x,
-                        y: path[i + 1].y - path[i].y
+                        x: targetPath[i + 1].x - targetPath[i].x,
+                        y: targetPath[i + 1].y - targetPath[i].y
                     };
                     // Normalize direction
                     const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
@@ -576,10 +685,16 @@
             carProgress += CAR_SPEED;
             carPosition = getPointAlongPath(carProgress, player1Path);
             const direction = getDirectionAlongPath(carProgress, player1Path);
-            carAngle = Math.atan2(direction.y, direction.x);
-
+            const targetCarAngle = Math.atan2(direction.y, direction.x);
+            
+            // Smoothly interpolate car angle
+            const angleDiff = targetCarAngle - currentCarAngle;
+            // Normalize angle difference to [-PI, PI]
+            const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
+            currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
+            
             redrawAll();
-            drawCar(carPosition, carAngle);
+            drawCar(carPosition, currentCarAngle);
 
             carAnimationFrame = requestAnimationFrame(animateCar);
         }
@@ -619,63 +734,10 @@
             redrawAll();
         }
 
-        function handleP1Done() {
-             if (player1Path.length < 2) {
-                 statusDiv.textContent = "Pelaaja 1: Polku on liian lyhyt! Piirrä pitempi polku.";
-                 return;
-             }
-
-             gameState = 'P2_WAITING';
-             isDrawing = false;
-             doneButton.style.display = 'none';
-             resetButton.style.display = 'inline-block';
-             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
-
-            player1TotalLength = calculatePathLength(player1Path);
-            const markerRadius = P1_WIDTH / 2 * MARKER_RADIUS_FACTOR;
-             startMarker = { ...player1Path[0], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
-             endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
-
-             // Calculate progress markers
-             progressMarkers = [];
-             for (let i = 0; i <= 10; i++) { // 10 segments (0% to 100%)
-                 const targetProgress = i * PROGRESS_INTERVAL;
-                 let accumulatedLength = 0;
-                 let markerPoint = null;
-                 let markerDirection = null;
-
-                 for (let j = 0; j < player1Path.length - 1; j++) {
-                     const segmentLength = dist(player1Path[j], player1Path[j + 1]);
-                     if (accumulatedLength + segmentLength >= targetProgress * player1TotalLength) {
-                         const t = (targetProgress * player1TotalLength - accumulatedLength) / segmentLength;
-                         markerPoint = {
-                             x: player1Path[j].x + t * (player1Path[j + 1].x - player1Path[j].x),
-                             y: player1Path[j].y + t * (player1Path[j + 1].y - player1Path[j].y)
-                         };
-                         markerDirection = {
-                             x: player1Path[j + 1].x - player1Path[j].x,
-                             y: player1Path[j + 1].y - player1Path[j].y
-                         };
-                         // Normalize direction
-                         const length = Math.sqrt(markerDirection.x * markerDirection.x + markerDirection.y * markerDirection.y);
-                         markerDirection.x /= length;
-                         markerDirection.y /= length;
-                         break;
-                     }
-                     accumulatedLength += segmentLength;
-                 }
-
-                 if (markerPoint && markerDirection) {
-                     progressMarkers.push({ point: markerPoint, direction: markerDirection });
-                 }
-             }
-
-             redrawAll();
-        }
-
-         function resetGame() {
+        function resetGame() {
             gameState = 'P1_DRAWING';
             player1Path = [];
+            smoothedPath = []; // Clear smoothed path
             player2Path = [];
             isDrawing = false;
             player1TotalLength = 0;
@@ -697,7 +759,7 @@
             carAngle = 0;
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-         }
+        }
 
         // --- Event Handlers ---
         function handleStart(e) {
