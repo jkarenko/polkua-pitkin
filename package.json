@@ -1,0 +1,11 @@
+{
+    "name": "polkua-pitkin",
+    "version": "1.0.0",
+    "description": "A path drawing game",
+    "scripts": {
+        "start": "npx http-server -o"
+    },
+    "devDependencies": {
+        "http-server": "^14.1.1"
+    }
+}
