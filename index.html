@@ -287,6 +287,21 @@
         // --- Drawing Functions ---
          function drawPath(path, color, width) {
              if (path.length < 1) return;
+             
+             // Draw the outline (black path with slightly larger width)
+             ctx.strokeStyle = 'black';
+             ctx.lineWidth = width + 4; // 2 pixels wider on each side
+             ctx.lineCap = 'round';
+             ctx.lineJoin = 'round';
+
+             ctx.beginPath();
+             ctx.moveTo(path[0].x, path[0].y);
+             for (let i = 1; i < path.length; i++) {
+                 ctx.lineTo(path[i].x, path[i].y);
+             }
+             ctx.stroke();
+
+             // Draw the main colored path on top
              ctx.strokeStyle = color;
              ctx.lineWidth = width;
              ctx.lineCap = 'round';
