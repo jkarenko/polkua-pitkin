@@ -87,9 +87,18 @@
         const CAR_WIDTH = 50;
         const CAR_HEIGHT = 20;
         const CAR_COLOR = '#FF4444';
-        const CAR_SPEED = 0.002; // Speed of car movement (0-1 per frame)
+        const CAR_PIXEL_SPEED = 2; // Base speed in pixels per frame
         const CAR_ANIMATION_INTERVAL = 16; // ~60fps
         const SMOOTHING_WINDOW = 10; // Number of points to use for smoothing
+        const CURVATURE_WINDOW = 10; // Number of points to use for curvature calculation
+        const MAX_CURVATURE = 0.9; // Maximum curvature value (1.0 would be a complete U-turn)
+        const ACCELERATION_RATE = 0.005; // How quickly the car speeds up (0-1 per frame)
+        const BASE_DECELERATION_RATE = 0.8; // Base deceleration rate (increased from 0.5)
+        const CURVE_LOOK_AHEAD = 0.15; // How far ahead to look for curves (15% of path)
+        const MAX_DECELERATION_RATE = 1.2; // Maximum deceleration rate when approaching sharp curves (increased from 0.8)
+        const CURVE_PREPARATION_DISTANCE = 0.1; // How far before a curve to start preparing (10% of path)
+        const FINISH_PREPARATION_DISTANCE = 0.2; // How far before finish to start slowing down (20% of path)
+        const MIN_FINISH_SPEED = 0.3; // Minimum speed at finish line (30% of max speed)
 
         // --- State ---
         let gameState = 'P1_DRAWING'; // 'P1_DRAWING', 'P2_WAITING', 'P2_DRAWING', 'P2_FINISHED', 'CAR_ANIMATING'
@@ -113,8 +122,10 @@
         let carAngle = 0;
         let currentWheelAngle = 0;
         let currentCarAngle = 0; // Add this to track current car angle
+        let currentSpeed = 0; // Add this to track current speed
         const WHEEL_TURN_SPEED = 0.15; // Controls how quickly wheels turn (0-1)
         const CAR_TURN_SPEED = 0.1; // Controls how quickly car body turns (0-1)
+        const INITIAL_SPEED = 0; // Start from rest
 
         // Add new state variables for sound management
         let engineSound = null;
@@ -261,8 +272,45 @@
                 mainOsc.start(startTime);
                 varOsc.start(startTime);
                 
-                // Store references for cleanup
-                return { mainOsc, varOsc };
+                // Store references for cleanup and speed control
+                return { 
+                    mainOsc, 
+                    varOsc,
+                    mainGain,
+                    varGain,
+                    baseFreq,
+                    updateSpeed: (speed) => {
+                        const speedFactor = speed / CAR_PIXEL_SPEED; // Normalize speed to 0-1
+                        const minFreq = baseFreq * 0.5;  // Minimum frequency (idle)
+                        const maxFreq = baseFreq * 1.5;  // Maximum frequency (full speed)
+                        
+                        // Calculate target frequency
+                        const targetFreq = minFreq + (maxFreq - minFreq) * speedFactor;
+                        
+                        // Get current frequency
+                        const currentFreq = mainOsc.frequency.value;
+                        
+                        // If we're decelerating (target frequency is lower than current)
+                        if (targetFreq < currentFreq) {
+                            // Start decreasing frequency much more gradually
+                            const newFreq = Math.max(targetFreq, currentFreq * 0.98);
+                            mainOsc.frequency.setValueAtTime(newFreq, audioCtx.currentTime);
+                            varOsc.frequency.setValueAtTime(newFreq * 1.5, audioCtx.currentTime);
+                        } else {
+                            // Normal acceleration
+                            mainOsc.frequency.setValueAtTime(targetFreq, audioCtx.currentTime);
+                            varOsc.frequency.setValueAtTime(targetFreq * 1.5, audioCtx.currentTime);
+                        }
+                        
+                        // Adjust volume with speed, starting to fade out earlier
+                        const volumeFactor = 0.05 + (speedFactor * 0.05); // 0.05 to 0.1
+                        // Start fading out volume when speed is below 30%
+                        const fadeOutFactor = Math.max(0, (speedFactor - 0.3) / 0.7);
+                        const finalVolumeFactor = volumeFactor * fadeOutFactor;
+                        mainGain.gain.setValueAtTime(finalVolumeFactor, audioCtx.currentTime);
+                        varGain.gain.setValueAtTime(finalVolumeFactor * 0.4, audioCtx.currentTime);
+                    }
+                };
             } else if (type === 'screech') {
                 // Create a screeching sound
                 const startTime = audioCtx.currentTime;
@@ -428,6 +476,57 @@
             return (accumulatedLength + currentSegmentProgress) / player1TotalLength;
         }
 
+        function calculateCurvature(progress, path) {
+            if (path.length < 3) return 0;
+            
+            // Get points before and after current position
+            const lookAhead = CURVATURE_WINDOW;
+            const currentPoint = getPointAlongPath(progress, path);
+            const prevPoint = getPointAlongPath(Math.max(0, progress - 0.01), path);
+            const nextPoint = getPointAlongPath(Math.min(1, progress + 0.01), path);
+            
+            // Calculate vectors
+            const v1 = { x: currentPoint.x - prevPoint.x, y: currentPoint.y - prevPoint.y };
+            const v2 = { x: nextPoint.x - currentPoint.x, y: nextPoint.y - currentPoint.y };
+            
+            // Calculate angle between vectors
+            const dot = v1.x * v2.x + v1.y * v2.y;
+            const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+            const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+            
+            if (mag1 === 0 || mag2 === 0) return 0;
+            
+            const cosAngle = dot / (mag1 * mag2);
+            // Clamp cosAngle to [-1, 1] to avoid floating point errors
+            const clampedCos = Math.max(-1, Math.min(1, cosAngle));
+            const angle = Math.acos(clampedCos);
+            
+            // Convert angle to curvature (0 to 1)
+            // 0 = straight line, 1 = complete U-turn
+            return Math.min(MAX_CURVATURE, angle / Math.PI);
+        }
+
+        function getSpeedMultiplier(curvature) {
+            // Convert curvature (0 to MAX_CURVATURE) to speed multiplier (0.05 to 1.0)
+            // Now at maximum curvature, speed will be reduced to 5% instead of 10%
+            return 1.0 - (curvature / MAX_CURVATURE) * 0.95;
+        }
+
+        function getDecelerationRate(currentCurvature, upcomingCurvature) {
+            // If there's a sharp curve coming up, decelerate more aggressively
+            const curveFactor = Math.max(0, upcomingCurvature - currentCurvature);
+            
+            // Calculate how close we are to the curve
+            const distanceToCurve = CURVE_LOOK_AHEAD - CURVE_PREPARATION_DISTANCE;
+            const preparationFactor = Math.max(0, Math.min(1, distanceToCurve / CURVE_PREPARATION_DISTANCE));
+            
+            // Combine curve sharpness with preparation factor
+            // Add extra deceleration for very sharp curves (curvature > 0.7)
+            const extraSharpCurveFactor = Math.max(0, (upcomingCurvature - 0.7) / 0.2);
+            const combinedFactor = (curveFactor + extraSharpCurveFactor) * preparationFactor;
+            
+            return BASE_DECELERATION_RATE + (combinedFactor * (MAX_DECELERATION_RATE - BASE_DECELERATION_RATE));
+        }
 
         // --- Drawing Functions ---
          function drawPath(path, color, width, isDrawing = false) {
@@ -786,7 +885,7 @@
                 if (carAnimationFrame) {
                     cancelAnimationFrame(carAnimationFrame);
                 }
-                // Stop engine sound and play victory honk pattern
+                // Stop engine sound immediately
                 if (engineSound) {
                     engineSound.mainOsc.stop();
                     engineSound.varOsc.stop();
@@ -797,8 +896,46 @@
                 return;
             }
 
-            carProgress += CAR_SPEED;
-            carPosition = getPointAlongPath(carProgress, player1Path);
+            // Calculate current and upcoming curvature
+            const currentCurvature = calculateCurvature(carProgress, player1Path);
+            const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
+            const upcomingCurvature = calculateCurvature(upcomingProgress, player1Path);
+
+            // Calculate target speed based on current curvature
+            const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
+            let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
+
+            // Apply finish line deceleration
+            const distanceToFinish = 1 - carProgress;
+            if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
+                const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
+                const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
+                targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
+            }
+
+            // Get dynamic deceleration rate based on upcoming curves
+            const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
+
+            // Gradually adjust current speed towards target speed
+            if (targetSpeed > currentSpeed) {
+                // Accelerate with a rate that depends on how far we are from target speed
+                const speedDiff = targetSpeed - currentSpeed;
+                const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED); // Faster acceleration when far from target
+                currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
+            } else {
+                // Decelerate with dynamic rate
+                currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
+            }
+
+            // Calculate the next position based on current speed
+            const currentPos = getPointAlongPath(carProgress, player1Path);
+            const nextProgress = carProgress + (currentSpeed / player1TotalLength);
+            const nextPos = getPointAlongPath(nextProgress, player1Path);
+            
+            // Update car position and progress
+            carPosition = nextPos;
+            carProgress = nextProgress;
+            
             const direction = getDirectionAlongPath(carProgress, player1Path);
             const targetCarAngle = Math.atan2(direction.y, direction.x);
             
@@ -819,6 +956,9 @@
             // Start engine sound if not already playing
             if (!engineSound) {
                 engineSound = playSound('engine');
+            } else {
+                // Update engine sound based on current speed
+                engineSound.updateSpeed(currentSpeed);
             }
             
             redrawAll();
