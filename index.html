@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Trace Route Game</title>
+    <title>Piirrä Polku - Peli</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #f0f0f0; touch-action: none; }
         canvas { display: block; background-color: #ffffff; cursor: crosshair; }
@@ -23,17 +23,26 @@
             font-size: 1rem;
             cursor: pointer;
             margin-right: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        #doneButton:hover, #resetButton:hover {
+            background-color: #45a049;
         }
         #status {
             font-weight: bold;
+            color: #333;
         }
     </style>
 </head>
 <body>
     <div id="controls">
-        <button id="doneButton">Done Drawing</button>
-        <button id="resetButton" style="display: none;">Reset Game</button>
-        <div id="status">Player 1: Draw a path.</div>
+        <button id="doneButton">Valmis!</button>
+        <button id="resetButton" style="display: none;">Uusi Peli</button>
+        <div id="status">Pelaaja 1: Piirrä polku.</div>
     </div>
     <canvas id="gameCanvas"></canvas>
 
@@ -45,13 +54,13 @@
         const statusDiv = document.getElementById('status');
 
         // --- Constants ---
-        const P1_COLOR = 'blue';
-        const P1_WIDTH = 20;
+        const P1_COLOR = 'lightblue';
+        const P1_WIDTH = 40;
         const P2_COLOR = 'black';
         const P2_WIDTH = 3;
         const START_COLOR = 'gray';
         const END_COLOR = 'green';
-        const MARKER_RADIUS_FACTOR = 1.2; // Circle radius = line width * factor
+        const MARKER_RADIUS_FACTOR = 1.4; // Circle radius = line width * factor
         const HIT_THRESHOLD_FACTOR = 1.1; // Tolerance multiplier for staying within P1 trace
         const PROGRESS_INTERVAL = 0.10; // 10%
         const START_END_SNAP_RADIUS_FACTOR = 1.5; // Multiplier for start/end circle click radius
@@ -270,13 +279,13 @@
             isDrawing = false;
             lastPlayedProgressMilestone = 0;
             gameState = 'P2_WAITING';
-            statusDiv.textContent = 'Player 2: Retrace the path starting from the gray circle.';
+            statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
             redrawAll();
         }
 
         function handleP1Done() {
              if (player1Path.length < 2) {
-                 statusDiv.textContent = "Player 1: Path is too short. Please draw more.";
+                 statusDiv.textContent = "Pelaaja 1: Polku on liian lyhyt! Piirrä pitempi polku.";
                  return;
              }
 
@@ -284,14 +293,14 @@
              isDrawing = false;
              doneButton.style.display = 'none';
              resetButton.style.display = 'inline-block';
-             statusDiv.textContent = 'Player 2: Retrace the path starting from the gray circle.';
+             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
 
             player1TotalLength = calculatePathLength(player1Path);
             const markerRadius = P1_WIDTH / 2 * MARKER_RADIUS_FACTOR;
              startMarker = { ...player1Path[0], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
              endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
 
-             redrawAll(); // Draw final P1 path with markers
+             redrawAll();
         }
 
          function resetGame() {
@@ -305,36 +314,34 @@
             endMarker = null;
             doneButton.style.display = 'inline-block';
             resetButton.style.display = 'none';
-            statusDiv.textContent = 'Player 1: Draw a path.';
+            statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
             ctx.clearRect(0, 0, canvas.width, canvas.height);
          }
 
         // --- Event Handlers ---
         function handleStart(e) {
-             if (e.touches && e.touches.length > 1) return; // Ignore multi-touch
+             if (e.touches && e.touches.length > 1) return;
              e.preventDefault();
-             hasInteracted = true; // User has interacted, safe to init audio
-             initAudio(); // Attempt audio init if not already done
+             hasInteracted = true;
+             initAudio();
 
              const pos = getEventCoords(e);
 
              if (gameState === 'P1_DRAWING') {
                  isDrawing = true;
                  player1Path = [pos];
-                 ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous P1 attempts if any
+                 ctx.clearRect(0, 0, canvas.width, canvas.height);
              } else if (gameState === 'P2_WAITING') {
-                 // Check if starting inside the gray circle
                  if (startMarker && dist(pos, startMarker) <= startMarker.snapRadius) {
                      isDrawing = true;
-                     player2Path = [pos]; // Start P2 path
+                     player2Path = [pos];
                      lastPlayedProgressMilestone = 0;
                      gameState = 'P2_DRAWING';
-                     statusDiv.textContent = 'Player 2: Tracing... Stay inside the blue line!';
-                     redrawAll(); // Redraw to clear any previous failed P2 lines
-                     drawPath(player2Path, P2_COLOR, P2_WIDTH); // Draw the first segment immediately
+                     statusDiv.textContent = 'Pelaaja 2: Seuraa polkua! Pysy sinisen viivan sisällä!';
+                     redrawAll();
+                     drawPath(player2Path, P2_COLOR, P2_WIDTH);
                  } else {
-                    // Didn't start in the right place
-                    statusDiv.textContent = 'Player 2: Start drawing inside the gray circle!';
+                    statusDiv.textContent = 'Pelaaja 2: Aloita piirtäminen harmaasta ympyrästä!';
                  }
              }
         }
@@ -346,12 +353,10 @@
             const pos = getEventCoords(e);
             const lastPos = (gameState === 'P1_DRAWING' ? player1Path : player2Path).slice(-1)[0];
 
-            // Avoid adding duplicate points if stationary
             if (pos.x === lastPos.x && pos.y === lastPos.y) return;
 
             if (gameState === 'P1_DRAWING') {
                 player1Path.push(pos);
-                // Draw segment dynamically
                 ctx.beginPath();
                 ctx.moveTo(lastPos.x, lastPos.y);
                 ctx.lineTo(pos.x, pos.y);
@@ -364,14 +369,11 @@
             } else if (gameState === 'P2_DRAWING') {
                 const threshold = P1_WIDTH / 2 * HIT_THRESHOLD_FACTOR;
                 if (!isPointWithinPath(pos, player1Path, threshold)) {
-                    // Player 2 went out of bounds
                     playSound('alarm');
                     resetPlayer2();
-                    statusDiv.textContent = 'Player 2: Outside the line! Restart from the gray circle.';
+                    statusDiv.textContent = 'Pelaaja 2: Hups! Eksyit polulta! Aloita uudelleen alusta.';
                 } else {
-                    // Still inside, continue drawing
                     player2Path.push(pos);
-                    // Draw segment
                     ctx.beginPath();
                     ctx.moveTo(lastPos.x, lastPos.y);
                     ctx.lineTo(pos.x, pos.y);
@@ -381,19 +383,12 @@
                     ctx.lineJoin = 'round';
                     ctx.stroke();
 
-
-                    // Check progress and play chime
                     const currentProgress = getProgressAlongPath(pos, player1Path);
                     const currentMilestone = Math.floor(currentProgress / PROGRESS_INTERVAL);
 
                     if (currentMilestone > lastPlayedProgressMilestone && currentProgress < 1.0) {
                          lastPlayedProgressMilestone = currentMilestone;
-                         playSound('chime', currentProgress); // Pitch increases with progress
-                    }
-
-                    // Check if near the end (visual cue maybe, or for immediate win detection)
-                    if (endMarker && dist(pos, endMarker) <= endMarker.snapRadius) {
-                        // Optionally give visual feedback for being near the end
+                         playSound('chime', currentProgress);
                     }
                 }
             }
@@ -401,45 +396,38 @@
 
         function handleEnd(e) {
             if (!isDrawing) return;
-             if (e.touches && e.touches.length > 0) return; // Ending one finger in multi-touch
+             if (e.touches && e.touches.length > 0) return;
             e.preventDefault();
-
 
             if (gameState === 'P1_DRAWING') {
                 isDrawing = false;
-                 // Don't switch state here, wait for button click
                  if (player1Path.length < 2) {
-                     statusDiv.textContent = "Player 1: Draw a path, then click 'Done'.";
+                     statusDiv.textContent = "Pelaaja 1: Piirrä polku ja paina 'Valmis'.";
                  } else {
-                     statusDiv.textContent = "Player 1: Click 'Done' or continue drawing.";
+                     statusDiv.textContent = "Pelaaja 1: Paina 'Valmis' tai jatka piirtämistä.";
                  }
             } else if (gameState === 'P2_DRAWING') {
                 const lastPos = player2Path.slice(-1)[0];
-                 isDrawing = false; // Stop drawing regardless
+                 isDrawing = false;
 
-                // Check if the lift-off point is within the end circle
                 if (endMarker && dist(lastPos, endMarker) <= endMarker.snapRadius) {
-                    // Check if significant progress was made (e.g., >95%)
                     const finalProgress = getProgressAlongPath(lastPos, player1Path);
                     if (finalProgress >= 0.95) {
                         gameState = 'P2_FINISHED';
-                        statusDiv.textContent = 'Player 2 Wins! Well traced!';
+                        statusDiv.textContent = 'Pelaaja 2 Voitti! Hienosti piirretty! 🎉';
                         playSound('success');
-                        // Keep the final trace visible
-                        redrawAll(); // Ensure final state is drawn clean
-                        drawPath(player2Path, P2_COLOR, P2_WIDTH); // Redraw P2 path over P1
+                        redrawAll();
+                        drawPath(player2Path, P2_COLOR, P2_WIDTH);
                     } else {
-                        // Reached end zone but didn't trace enough of the path
                         playSound('alarm');
                         resetPlayer2();
-                        statusDiv.textContent = 'Player 2: Reached the end too early! Restart trace.';
+                        statusDiv.textContent = 'Pelaaja 2: Saavutit maalin liian aikaisin! Aloita uudelleen alusta.';
                     }
 
                 } else {
-                    // Lifted finger outside the end zone - treat as failure/interruption
                     playSound('alarm');
                     resetPlayer2();
-                     statusDiv.textContent = 'Player 2: Trace interrupted! Restart from the gray circle.';
+                     statusDiv.textContent = 'Pelaaja 2: Piirtäminen keskeytyi! Aloita uudelleen alusta.';
                 }
             }
         }
