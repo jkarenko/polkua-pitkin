@@ -49,6 +49,85 @@
             min-width: 40px;
             text-align: right;
         }
+        /* Game screen styles */
+        .game-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        
+        .game-screen h1 {
+            color: white;
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        
+        .game-screen h2 {
+            color: white;
+            font-size: 36px;
+            margin-bottom: 15px;
+        }
+        
+        .game-screen p {
+            color: white;
+            font-size: 24px;
+            margin-bottom: 40px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+        
+        #victoryScreen {
+            color: #4CAF50;
+        }
+        
+        #defeatScreen {
+            color: #FF4444;
+        }
+        
+        .game-screen-buttons {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .game-button {
+            padding: 15px 30px;
+            font-size: 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+            font-weight: bold;
+            min-width: 200px;
+        }
+        
+        .replay-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .replay-button:hover {
+            background-color: #45a049;
+        }
+        
+        .new-game-button {
+            background-color: #2196F3;
+            color: white;
+        }
+        
+        .new-game-button:hover {
+            background-color: #0b7dda;
+        }
     </style>
 </head>
 <body>
@@ -62,6 +141,28 @@
         </div>
         <div id="status">Pelaaja 1: Piirrä polku.</div>
     </div>
+    
+    <!-- Victory screen -->
+    <div id="victoryScreen" class="game-screen">
+        <h1>Pääsit Maaliin!</h1>
+        <h2 id="scoreDisplay">Pisteet: 0</h2>
+        <p id="scoreMessage">Hyvin pelattu!</p>
+        <div class="game-screen-buttons">
+            <button id="victoryReplayButton" class="game-button replay-button">Pelaa Uudelleen</button>
+            <button id="victoryNewGameButton" class="game-button new-game-button">Uusi Peli</button>
+        </div>
+    </div>
+    
+    <!-- Defeat screen -->
+    <div id="defeatScreen" class="game-screen">
+        <h1>POLTTOAINE LOPPUI!</h1>
+        <p>Yritä päästä perille vähemmillä mutkilla</p>
+        <div class="game-screen-buttons">
+            <button id="defeatReplayButton" class="game-button replay-button">Pelaa Uudelleen</button>
+            <button id="defeatNewGameButton" class="game-button new-game-button">Uusi Peli</button>
+        </div>
+    </div>
+    
     <canvas id="gameCanvas"></canvas>
 
     <script>
@@ -895,320 +996,21 @@
         }
 
         function drawVictoryScreen(score) {
-            // Draw semi-transparent black overlay
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const victoryScreen = document.getElementById('victoryScreen');
+            const scoreDisplay = document.getElementById('scoreDisplay');
+            const scoreMessage = document.getElementById('scoreMessage');
             
-            // Draw victory message
-            ctx.save();
-            ctx.fillStyle = '#4CAF50';
-            ctx.font = 'bold 48px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
+            // Update content
+            scoreDisplay.textContent = `Pisteet: ${score}`;
+            scoreMessage.textContent = getScoreMessage(score);
             
-            // Add text shadow
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-            ctx.shadowBlur = 10;
-            ctx.shadowOffsetX = 2;
-            ctx.shadowOffsetY = 2;
-            
-            // Draw main message
-            ctx.fillText('Pääsit Maaliin!', canvas.width/2, canvas.height/2 - 100);
-            
-            // Draw score
-            ctx.font = 'bold 36px sans-serif';
-            ctx.fillText(`Pisteet: ${score}`, canvas.width/2, canvas.height/2 - 40);
-            
-            // Draw score message
-            ctx.font = '24px sans-serif';
-            ctx.fillText(getScoreMessage(score), canvas.width/2, canvas.height/2);
-            
-            // Reset shadow
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            
-            // Draw buttons
-            const buttonWidth = 200;
-            const buttonHeight = 50;
-            const buttonSpacing = 20;
-            const totalWidth = buttonWidth * 2 + buttonSpacing;
-            const startX = canvas.width/2 - totalWidth/2;
-            
-            // Replay button
-            ctx.fillStyle = '#4CAF50';
-            ctx.fillRect(startX, canvas.height/2 + 40, buttonWidth, buttonHeight);
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 20px sans-serif';
-            ctx.fillText('Pelaa Uudelleen', startX + buttonWidth/2, canvas.height/2 + 70);
-            
-            // New game button
-            ctx.fillStyle = '#2196F3';
-            ctx.fillRect(startX + buttonWidth + buttonSpacing, canvas.height/2 + 40, buttonWidth, buttonHeight);
-            ctx.fillStyle = 'white';
-            ctx.fillText('Uusi Peli', startX + buttonWidth + buttonSpacing + buttonWidth/2, canvas.height/2 + 70);
-            
-            ctx.restore();
+            // Display the screen
+            victoryScreen.style.display = 'flex';
         }
 
         function drawFailState() {
-            // Draw semi-transparent black overlay
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw fail message
-            ctx.save();
-            ctx.fillStyle = '#FF4444';
-            ctx.font = 'bold 48px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            
-            // Add text shadow
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-            ctx.shadowBlur = 10;
-            ctx.shadowOffsetX = 2;
-            ctx.shadowOffsetY = 2;
-            
-            // Draw main message
-            ctx.fillText('POLTTOAINE LOPPUI!', canvas.width/2, canvas.height/2 - 60);
-            
-            // Reset shadow
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            
-            // Draw buttons
-            const buttonWidth = 200;
-            const buttonHeight = 50;
-            const buttonSpacing = 20;
-            const totalWidth = buttonWidth * 2 + buttonSpacing;
-            const startX = canvas.width/2 - totalWidth/2;
-            
-            // Replay button
-            ctx.fillStyle = '#4CAF50';
-            ctx.fillRect(startX, canvas.height/2 + 20, buttonWidth, buttonHeight);
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 20px sans-serif';
-            ctx.fillText('Pelaa Uudelleen', startX + buttonWidth/2, canvas.height/2 + 50);
-            
-            // New game button
-            ctx.fillStyle = '#2196F3';
-            ctx.fillRect(startX + buttonWidth + buttonSpacing, canvas.height/2 + 20, buttonWidth, buttonHeight);
-            ctx.fillStyle = 'white';
-            ctx.fillText('Uusi Peli', startX + buttonWidth + buttonSpacing + buttonWidth/2, canvas.height/2 + 50);
-            
-            ctx.restore();
-        }
-
-        function isPointInButton(point, buttonX, buttonY, buttonWidth, buttonHeight) {
-            return point.x >= buttonX && 
-                   point.x <= buttonX + buttonWidth && 
-                   point.y >= buttonY && 
-                   point.y <= buttonY + buttonHeight;
-        }
-
-        function handleVictoryFailClick(e) {
-            if (gameState !== 'P2_FINISHED') return;
-            
-            const pos = getEventCoords(e);
-            const buttonWidth = 200;
-            const buttonHeight = 50;
-            const buttonSpacing = 20;
-            const totalWidth = buttonWidth * 2 + buttonSpacing;
-            const startX = canvas.width/2 - totalWidth/2;
-            
-            // Check if click is in replay button
-            if (isPointInButton(pos, startX, canvas.height/2 + 40, buttonWidth, buttonHeight)) {
-                replayLevel();
-            }
-            // Check if click is in new game button
-            else if (isPointInButton(pos, startX + buttonWidth + buttonSpacing, canvas.height/2 + 40, buttonWidth, buttonHeight)) {
-                resetGame();
-            }
-        }
-
-        function replayLevel() {
-            // Keep player1Path and smoothedPath, but reset everything else
-            player2Path = [];
-            isDrawing = false;
-            lastPlayedProgressMilestone = 0;
-            currentActiveSegmentIndex = 0;
-            currentPathLength = 0;
-            gameState = 'P2_WAITING';
-            statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
-            
-            // Reset car state
-            if (carAnimationFrame) {
-                cancelAnimationFrame(carAnimationFrame);
-                carAnimationFrame = null;
-            }
-            carProgress = 0;
-            carPosition = { x: 0, y: 0 };
-            carAngle = 0;
-            carTrail = [];
-            
-            // Stop engine sound if playing
-            if (engineSound) {
-                engineSound.mainOsc.stop();
-                engineSound.varOsc.stop();
-                engineSound = null;
-            }
-            
-            redrawAll();
-        }
-
-        function animateCar() {
-            if (carProgress >= 1) {
-                // Check if we've exceeded the fuel limit
-                if (currentPathLength > maxAllowedPathLength) {
-                    gameState = 'P2_FINISHED';
-                    if (carAnimationFrame) {
-                        cancelAnimationFrame(carAnimationFrame);
-                    }
-                    // Stop engine sound immediately
-                    if (engineSound) {
-                        engineSound.mainOsc.stop();
-                        engineSound.varOsc.stop();
-                        engineSound = null;
-                    }
-                    // Play a failure sound
-                    playSound('alarm');
-                    playSound('alarm'); // Play twice for emphasis
-                    statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Aloita uudelleen alusta.';
-                    redrawAll(); // Redraw to show fail state
-                    return;
-                }
-
-                gameState = 'P2_FINISHED';
-                if (carAnimationFrame) {
-                    cancelAnimationFrame(carAnimationFrame);
-                }
-                // Stop engine sound immediately
-                if (engineSound) {
-                    engineSound.mainOsc.stop();
-                    engineSound.varOsc.stop();
-                    engineSound = null;
-                }
-                // Play a victory honk pattern: short-short-long
-                playHonk([0.1, 0.6], [0.1]);
-                
-                // Calculate and display score
-                const score = calculateScore();
-                statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
-                redrawAll(); // Redraw to show victory screen
-                return;
-            }
-
-            // Calculate remaining fuel as we animate
-            const finalPathLength = player1TotalLength * carProgress; // Path length covered so far
-            
-            // Check if we're out of fuel during animation
-            if (finalPathLength > maxAllowedPathLength) {
-                gameState = 'P2_FINISHED';
-                if (carAnimationFrame) {
-                    cancelAnimationFrame(carAnimationFrame);
-                }
-                // Stop engine sound immediately
-                if (engineSound) {
-                    engineSound.mainOsc.stop();
-                    engineSound.varOsc.stop();
-                    engineSound = null;
-                }
-                // Play a failure sound
-                playSound('alarm');
-                playSound('alarm'); // Play twice for emphasis
-                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Aloita uudelleen alusta.';
-                redrawAll(); // Redraw to show fail state
-                return;
-            }
-
-            // Calculate current and upcoming curvature
-            const currentCurvature = calculateCurvature(carProgress, player2Path);
-            const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
-            const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path);
-
-            // Calculate target speed based on current curvature
-            const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
-            let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
-
-            // Apply finish line deceleration
-            const distanceToFinish = 1 - carProgress;
-            if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
-                const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
-                const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
-                targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
-            }
-
-            // Get dynamic deceleration rate based on upcoming curves
-            const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
-
-            // Gradually adjust current speed towards target speed
-            if (targetSpeed > currentSpeed) {
-                // Accelerate with a rate that depends on how far we are from target speed
-                const speedDiff = targetSpeed - currentSpeed;
-                const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED); // Faster acceleration when far from target
-                currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
-            } else {
-                // Decelerate with dynamic rate
-                currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
-            }
-
-            // Calculate the next position based on current speed
-            const currentPos = getPointAlongPath(carProgress, player2Path);
-            const nextProgress = carProgress + (currentSpeed / player1TotalLength);
-            const nextPos = getPointAlongPath(nextProgress, player2Path);
-            
-            // Update car position and progress
-            carPosition = nextPos;
-            carProgress = nextProgress;
-            
-            // Add current position to car trail
-            carTrail.push({ ...carPosition });
-            
-            const direction = getDirectionAlongPath(carProgress, player2Path);
-            const targetCarAngle = Math.atan2(direction.y, direction.x);
-            
-            // Calculate angle change
-            const angleDiff = targetCarAngle - currentCarAngle;
-            const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
-            
-            // Handle sound effects based on turning
-            const currentTime = Date.now();
-            if (Math.abs(normalizedDiff) > TURN_THRESHOLD && currentTime - lastAngleChange > SOUND_COOLDOWN) {
-                playSound('screech');
-                lastAngleChange = currentTime;
-            }
-            
-            // Update car angle
-            currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
-            
-            // Start engine sound if not already playing
-            if (!engineSound) {
-                engineSound = playSound('engine');
-            } else {
-                // Update engine sound based on current speed
-                engineSound.updateSpeed(currentSpeed);
-            }
-            
-            redrawAll();
-            // Draw the car trail
-            if (carTrail.length > 1) {
-                ctx.beginPath();
-                ctx.moveTo(carTrail[0].x, carTrail[0].y);
-                for (let i = 1; i < carTrail.length; i++) {
-                    ctx.lineTo(carTrail[i].x, carTrail[i].y);
-                }
-                ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; // Semi-transparent red
-                ctx.lineWidth = 3;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.stroke();
-            }
-            drawCar(carPosition, currentCarAngle);
-
-            carAnimationFrame = requestAnimationFrame(animateCar);
+            const defeatScreen = document.getElementById('defeatScreen');
+            defeatScreen.style.display = 'flex';
         }
 
         function drawFuelGauge() {
@@ -1324,18 +1126,6 @@
             if (carPosition) {
                 drawCar(carPosition, currentCarAngle);
             }
-            
-            // Draw fail state if fuel ran out, whether at finish or during animation
-            if (gameState === 'P2_FINISHED') {
-                // Get path length covered so far
-                const pathCovered = player1TotalLength * carProgress;
-                
-                if (pathCovered > maxAllowedPathLength || currentPathLength > maxAllowedPathLength) {
-                    drawFailState();
-                } else {
-                    drawVictoryScreen(calculateScore());
-                }
-            }
 
             // Draw fuel gauge last so it's always on top
             drawFuelGauge();
@@ -1354,6 +1144,10 @@
         }
 
         function resetGame() {
+            // Hide screens
+            document.getElementById('victoryScreen').style.display = 'none';
+            document.getElementById('defeatScreen').style.display = 'none';
+            
             gameState = 'P1_DRAWING';
             player1Path = [];
             smoothedPath = []; // Clear smoothed path
@@ -1601,13 +1395,213 @@
 
         window.addEventListener('resize', resizeCanvas);
 
-        // Add click handler for victory/fail screens
-        canvas.addEventListener('click', handleVictoryFailClick);
-        canvas.addEventListener('touchend', handleVictoryFailClick);
+        // Add event listeners for game screens
+        document.getElementById('victoryReplayButton').addEventListener('click', replayLevel);
+        document.getElementById('victoryNewGameButton').addEventListener('click', resetGame);
+        document.getElementById('defeatReplayButton').addEventListener('click', replayLevel);
+        document.getElementById('defeatNewGameButton').addEventListener('click', resetGame);
 
         // Initial setup
         resizeCanvas();
         resetGame(); // Initialize game state
+
+        function isPointInButton(point, buttonX, buttonY, buttonWidth, buttonHeight) {
+            return point.x >= buttonX && 
+                   point.x <= buttonX + buttonWidth && 
+                   point.y >= buttonY && 
+                   point.y <= buttonY + buttonHeight;
+        }
+
+        function handleVictoryFailClick(e) {
+            // This function is no longer needed as we're using HTML buttons
+            // that have their own event listeners
+        }
+
+        function replayLevel() {
+            // Hide screens
+            document.getElementById('victoryScreen').style.display = 'none';
+            document.getElementById('defeatScreen').style.display = 'none';
+            
+            // Keep player1Path and smoothedPath, but reset everything else
+            player2Path = [];
+            isDrawing = false;
+            lastPlayedProgressMilestone = 0;
+            currentActiveSegmentIndex = 0;
+            currentPathLength = 0;
+            gameState = 'P2_WAITING';
+            statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
+            
+            // Reset car state
+            if (carAnimationFrame) {
+                cancelAnimationFrame(carAnimationFrame);
+                carAnimationFrame = null;
+            }
+            carProgress = 0;
+            carPosition = { x: 0, y: 0 };
+            carAngle = 0;
+            carTrail = [];
+            
+            // Stop engine sound if playing
+            if (engineSound) {
+                engineSound.mainOsc.stop();
+                engineSound.varOsc.stop();
+                engineSound = null;
+            }
+            
+            redrawAll();
+        }
+
+        function animateCar() {
+            if (carProgress >= 1) {
+                // Check if we've exceeded the fuel limit
+                if (currentPathLength > maxAllowedPathLength) {
+                    gameState = 'P2_FINISHED';
+                    if (carAnimationFrame) {
+                        cancelAnimationFrame(carAnimationFrame);
+                    }
+                    // Stop engine sound immediately
+                    if (engineSound) {
+                        engineSound.mainOsc.stop();
+                        engineSound.varOsc.stop();
+                        engineSound = null;
+                    }
+                    // Play a failure sound
+                    playSound('alarm');
+                    playSound('alarm'); // Play twice for emphasis
+                    statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Aloita uudelleen alusta.';
+                    drawFailState(); // Show fail state
+                    return;
+                }
+
+                gameState = 'P2_FINISHED';
+                if (carAnimationFrame) {
+                    cancelAnimationFrame(carAnimationFrame);
+                }
+                // Stop engine sound immediately
+                if (engineSound) {
+                    engineSound.mainOsc.stop();
+                    engineSound.varOsc.stop();
+                    engineSound = null;
+                }
+                // Play a victory honk pattern: short-short-long
+                playHonk([0.1, 0.6], [0.1]);
+                
+                // Calculate and display score
+                const score = calculateScore();
+                statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
+                drawVictoryScreen(score); // Show victory screen
+                return;
+            }
+
+            // Calculate remaining fuel as we animate
+            const finalPathLength = player1TotalLength * carProgress; // Path length covered so far
+            
+            // Check if we're out of fuel during animation
+            if (finalPathLength > maxAllowedPathLength) {
+                gameState = 'P2_FINISHED';
+                if (carAnimationFrame) {
+                    cancelAnimationFrame(carAnimationFrame);
+                }
+                // Stop engine sound immediately
+                if (engineSound) {
+                    engineSound.mainOsc.stop();
+                    engineSound.varOsc.stop();
+                    engineSound = null;
+                }
+                // Play a failure sound
+                playSound('alarm');
+                playSound('alarm'); // Play twice for emphasis
+                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Aloita uudelleen alusta.';
+                drawFailState(); // Show fail state
+                return;
+            }
+
+            // Calculate current and upcoming curvature
+            const currentCurvature = calculateCurvature(carProgress, player2Path);
+            const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
+            const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path);
+
+            // Calculate target speed based on current curvature
+            const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
+            let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
+
+            // Apply finish line deceleration
+            const distanceToFinish = 1 - carProgress;
+            if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
+                const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
+                const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
+                targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
+            }
+
+            // Get dynamic deceleration rate based on upcoming curves
+            const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
+
+            // Gradually adjust current speed towards target speed
+            if (targetSpeed > currentSpeed) {
+                // Accelerate with a rate that depends on how far we are from target speed
+                const speedDiff = targetSpeed - currentSpeed;
+                const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED); // Faster acceleration when far from target
+                currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
+            } else {
+                // Decelerate with dynamic rate
+                currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
+            }
+
+            // Calculate the next position based on current speed
+            const currentPos = getPointAlongPath(carProgress, player2Path);
+            const nextProgress = carProgress + (currentSpeed / player1TotalLength);
+            const nextPos = getPointAlongPath(nextProgress, player2Path);
+            
+            // Update car position and progress
+            carPosition = nextPos;
+            carProgress = nextProgress;
+            
+            // Add current position to car trail
+            carTrail.push({ ...carPosition });
+            
+            const direction = getDirectionAlongPath(carProgress, player2Path);
+            const targetCarAngle = Math.atan2(direction.y, direction.x);
+            
+            // Calculate angle change
+            const angleDiff = targetCarAngle - currentCarAngle;
+            const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
+            
+            // Handle sound effects based on turning
+            const currentTime = Date.now();
+            if (Math.abs(normalizedDiff) > TURN_THRESHOLD && currentTime - lastAngleChange > SOUND_COOLDOWN) {
+                playSound('screech');
+                lastAngleChange = currentTime;
+            }
+            
+            // Update car angle
+            currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
+            
+            // Start engine sound if not already playing
+            if (!engineSound) {
+                engineSound = playSound('engine');
+            } else {
+                // Update engine sound based on current speed
+                engineSound.updateSpeed(currentSpeed);
+            }
+            
+            redrawAll();
+            // Draw the car trail
+            if (carTrail.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(carTrail[0].x, carTrail[0].y);
+                for (let i = 1; i < carTrail.length; i++) {
+                    ctx.lineTo(carTrail[i].x, carTrail[i].y);
+                }
+                ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; // Semi-transparent red
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+            }
+            drawCar(carPosition, currentCarAngle);
+
+            carAnimationFrame = requestAnimationFrame(animateCar);
+        }
 
     </script>
 </body>
