@@ -76,6 +76,7 @@
         let endMarker = null; // { x, y, radius }
         let audioCtx = null;
         let hasInteracted = false; // For resuming audio context
+        let currentActiveSegmentIndex = 0; // Add this to the state variables at the top
 
         // --- Audio ---
         function initAudio() {
@@ -171,15 +172,40 @@
 
         function isPointWithinPath(point, path, threshold) {
             if (path.length < 2) return true; // Path is just a point or empty
-            let minDistance = Infinity;
-            for (let i = 0; i < path.length - 1; i++) {
-                minDistance = Math.min(minDistance, pointLineSegmentDistance(point, path[i], path[i + 1]));
+            
+            // For Player 1's drawing phase, use the original behavior
+            if (gameState === 'P1_DRAWING') {
+                let minDistance = Infinity;
+                for (let i = 0; i < path.length - 1; i++) {
+                    minDistance = Math.min(minDistance, pointLineSegmentDistance(point, path[i], path[i + 1]));
+                }
+                if (path.length > 0) {
+                    minDistance = Math.min(minDistance, dist(point, path[0]));
+                    minDistance = Math.min(minDistance, dist(point, path[path.length - 1]));
+                }
+                return minDistance <= threshold;
             }
-             // Also check distance to the very first and last points explicitly
-             if (path.length > 0) {
-                 minDistance = Math.min(minDistance, dist(point, path[0]));
-                 minDistance = Math.min(minDistance, dist(point, path[path.length - 1]));
-             }
+            
+            // For Player 2's drawing phase, check against all segments up to current position plus look-ahead
+            const lookAheadSegments = 3; // Number of segments to look ahead
+            const startIdx = 0; // Always start from beginning
+            const endIdx = Math.min(currentActiveSegmentIndex + lookAheadSegments, path.length - 1);
+            
+            let minDistance = Infinity;
+            for (let i = startIdx; i <= endIdx; i++) {
+                if (i < path.length - 1) {
+                    minDistance = Math.min(minDistance, pointLineSegmentDistance(point, path[i], path[i + 1]));
+                }
+            }
+            
+            // If we're near the end of the current segment, advance to the next one
+            if (currentActiveSegmentIndex < path.length - 1) {
+                const currentSegmentEnd = path[currentActiveSegmentIndex + 1];
+                if (dist(point, currentSegmentEnd) <= threshold * 1.5) {
+                    currentActiveSegmentIndex++;
+                }
+            }
+            
             return minDistance <= threshold;
         }
 
@@ -194,39 +220,67 @@
         function getProgressAlongPath(point, path) {
             if (path.length < 2 || player1TotalLength === 0) return 0;
 
-            let minDistanceSq = Infinity;
-            let lengthUpToProjection = 0;
-            let accumulatedLength = 0;
+            // For Player 1's drawing phase, use the original behavior
+            if (gameState === 'P1_DRAWING') {
+                let minDistanceSq = Infinity;
+                let lengthUpToProjection = 0;
+                let accumulatedLength = 0;
 
-            for (let i = 0; i < path.length - 1; i++) {
-                const a = path[i];
-                const b = path[i + 1];
-                const segmentLength = dist(a, b);
-                const l2 = distSq(a, b);
-                let currentProjection = a;
-                let t = 0;
+                for (let i = 0; i < path.length - 1; i++) {
+                    const a = path[i];
+                    const b = path[i + 1];
+                    const segmentLength = dist(a, b);
+                    const l2 = distSq(a, b);
+                    let currentProjection = a;
+                    let t = 0;
 
-                if (l2 !== 0) {
-                    t = ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / l2;
-                    t = Math.max(0, Math.min(1, t));
-                    currentProjection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+                    if (l2 !== 0) {
+                        t = ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / l2;
+                        t = Math.max(0, Math.min(1, t));
+                        currentProjection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+                    }
+
+                    const dSq = distSq(point, currentProjection);
+
+                    if (dSq < minDistanceSq) {
+                        minDistanceSq = dSq;
+                        lengthUpToProjection = accumulatedLength + t * segmentLength;
+                    }
+                    accumulatedLength += segmentLength;
+                }
+                // Check distance to the last point as well
+                const distToLastPointSq = distSq(point, path[path.length - 1]);
+                if (distToLastPointSq < minDistanceSq) {
+                    lengthUpToProjection = accumulatedLength;
                 }
 
-                const dSq = distSq(point, currentProjection);
-
-                if (dSq < minDistanceSq) {
-                    minDistanceSq = dSq;
-                    lengthUpToProjection = accumulatedLength + t * segmentLength;
-                }
-                 accumulatedLength += segmentLength;
-             }
-             // Check distance to the last point as well
-            const distToLastPointSq = distSq(point, path[path.length - 1]);
-            if (distToLastPointSq < minDistanceSq) {
-                lengthUpToProjection = accumulatedLength; // accumulatedLength is total length here
+                return lengthUpToProjection / player1TotalLength;
             }
 
-            return lengthUpToProjection / player1TotalLength;
+            // For Player 2's drawing phase, calculate progress based on current active segment
+            let accumulatedLength = 0;
+            let currentSegmentProgress = 0;
+
+            // Calculate length up to current active segment
+            for (let i = 0; i < currentActiveSegmentIndex; i++) {
+                accumulatedLength += dist(path[i], path[i + 1]);
+            }
+
+            // Calculate progress within current segment
+            if (currentActiveSegmentIndex < path.length - 1) {
+                const currentStart = path[currentActiveSegmentIndex];
+                const currentEnd = path[currentActiveSegmentIndex + 1];
+                const segmentLength = dist(currentStart, currentEnd);
+                const l2 = distSq(currentStart, currentEnd);
+                
+                if (l2 !== 0) {
+                    const t = ((point.x - currentStart.x) * (currentEnd.x - currentStart.x) + 
+                              (point.y - currentStart.y) * (currentEnd.y - currentStart.y)) / l2;
+                    currentSegmentProgress = Math.max(0, Math.min(1, t)) * segmentLength;
+                }
+            }
+
+            return (accumulatedLength + currentSegmentProgress) / player1TotalLength;
         }
 
 
@@ -278,6 +332,7 @@
             player2Path = [];
             isDrawing = false;
             lastPlayedProgressMilestone = 0;
+            currentActiveSegmentIndex = 0; // Reset the active segment index
             gameState = 'P2_WAITING';
             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
             redrawAll();
