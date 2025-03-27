@@ -220,6 +220,9 @@
         let progressMarkers = []; // Array to store progress milestone points with their directions
         let maxAllowedPathLength = 0; // Maximum allowed path length for P2
         let currentPathLength = 0; // Current path length for P2
+        let fuelConsumed = 0; // Add this to track fuel used during animation
+        let previousCarPosition = null; // Add this to calculate distance moved per frame
+        let defeatFlagged = false; // Add this to track if defeat has been flagged
 
         // Car state
         let carProgress = 0;
@@ -1014,75 +1017,72 @@
         }
 
         function drawFuelGauge() {
+            // Only draw if P2 is drawing or car is animating
             if (gameState !== 'P2_DRAWING' && gameState !== 'CAR_ANIMATING') return;
-            
+
             const gaugeWidth = 200;
             const gaugeHeight = 30;
             const x = canvas.width - gaugeWidth - 20;
             const y = 20;
-            
-            // Draw gauge background with rounded corners
+
             ctx.save();
+
+            // Draw background
             ctx.beginPath();
             ctx.roundRect(x, y, gaugeWidth, gaugeHeight, 5);
             ctx.fillStyle = '#ddd';
             ctx.fill();
-            
+
             // Calculate remaining fuel percentage
             let remainingFuel;
             if (gameState === 'CAR_ANIMATING') {
-                // During car animation, calculate based on actual path length covered
-                const pathCovered = player1TotalLength * carProgress;
-                remainingFuel = Math.max(0, 1 - (pathCovered / maxAllowedPathLength));
-            } else {
-                // During drawing, fuel decreases based on path length
+                // Use actual fuel consumed during animation
+                remainingFuel = Math.max(0, 1 - (fuelConsumed / maxAllowedPathLength));
+            } else { // gameState === 'P2_DRAWING'
+                // Use path length drawn so far
                 remainingFuel = Math.max(0, 1 - (currentPathLength / maxAllowedPathLength));
             }
-            
-            // Draw fuel level with gradient
+
+            // Draw fuel level
             const gradient = ctx.createLinearGradient(x, y, x + gaugeWidth, y);
             if (remainingFuel > 0.3) {
-                gradient.addColorStop(0, '#4CAF50');
-                gradient.addColorStop(1, '#45a049');
+                gradient.addColorStop(0, '#4CAF50'); gradient.addColorStop(1, '#45a049');
             } else if (remainingFuel > 0.1) {
-                gradient.addColorStop(0, '#FFA500');
-                gradient.addColorStop(1, '#FF8C00');
+                gradient.addColorStop(0, '#FFA500'); gradient.addColorStop(1, '#FF8C00');
             } else {
-                gradient.addColorStop(0, '#FF4444');
-                gradient.addColorStop(1, '#CC0000');
+                gradient.addColorStop(0, '#FF4444'); gradient.addColorStop(1, '#CC0000');
             }
-            
+
             ctx.fillStyle = gradient;
             ctx.beginPath();
-            ctx.roundRect(x, y, gaugeWidth * remainingFuel, gaugeHeight, 5);
-            ctx.fill();
-            
-            // Draw gauge border
+            // Ensure fuel bar doesn't go beyond gauge boundaries and handles 0 fuel correctly
+            const fuelWidth = Math.max(0, Math.min(gaugeWidth, gaugeWidth * remainingFuel));
+            // Need to draw a rectangle from the start, not a rounded one if width is small, or handle corners
+            if (fuelWidth > 0) {
+                ctx.roundRect(x, y, fuelWidth, gaugeHeight, 5);
+                ctx.fill();
+            }
+
+            // Draw gauge border using the same path
+            ctx.beginPath(); // Start new path for border
+            ctx.roundRect(x, y, gaugeWidth, gaugeHeight, 5);
             ctx.strokeStyle = '#666';
             ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            // Draw fuel text with shadow
+            ctx.stroke(); // Apply stroke to the border path
+
+            // Draw fuel text
             ctx.fillStyle = '#000';
             ctx.font = 'bold 16px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            
-            // Add text shadow
             ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
             ctx.shadowBlur = 2;
             ctx.shadowOffsetX = 1;
             ctx.shadowOffsetY = 1;
-            
+
             ctx.fillText(`Polttoaine: ${Math.round(remainingFuel * 100)}%`, x + gaugeWidth/2, y + gaugeHeight/2);
-            
-            // Reset shadow
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            
-            ctx.restore();
+
+            ctx.restore(); // Restores shadow settings etc.
         }
 
         function redrawAll() {
@@ -1161,6 +1161,9 @@
             carTrail = []; // Clear car trail
             currentPathLength = 0; // Reset path length
             maxAllowedPathLength = 0; // Reset max allowed path length
+            fuelConsumed = 0; // Reset fuel consumed
+            previousCarPosition = null; // Reset previous car position tracking
+            defeatFlagged = false; // Reset defeat flag
             doneButton.style.display = 'inline-block';
             resetButton.style.display = 'none';
             statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
@@ -1238,28 +1241,35 @@
                     playSound('alarm');
                     resetPlayer2();
                     statusDiv.textContent = 'Pelaaja 2: Hups! Eksyit polulta! Aloita uudelleen alusta.';
-                } else {
-                    // Calculate new path length
-                    const newSegmentLength = dist(lastPos, pos);
-                    currentPathLength += newSegmentLength;
-                    player2Path.push(pos);
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(lastPos.x, lastPos.y);
-                    ctx.lineTo(pos.x, pos.y);
-                    ctx.strokeStyle = P2_COLOR;
-                    ctx.lineWidth = P2_WIDTH;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    ctx.stroke();
+                    return;
+                }
 
-                    const currentProgress = getProgressAlongPath(pos, player1Path);
-                    const currentMilestone = Math.floor(currentProgress / PROGRESS_INTERVAL);
+                // Calculate new path length
+                const newSegmentLength = dist(lastPos, pos);
+                currentPathLength += newSegmentLength;
 
-                    if (currentMilestone > lastPlayedProgressMilestone && currentProgress < 1.0) {
-                         lastPlayedProgressMilestone = currentMilestone;
-                         playSound('chime', currentProgress);
-                    }
+                // Check if we've exceeded the fuel limit
+                if (currentPathLength > maxAllowedPathLength) {
+                    defeatFlagged = true; // Silently flag for defeat without any messages
+                }
+                
+                player2Path.push(pos);
+                
+                ctx.beginPath();
+                ctx.moveTo(lastPos.x, lastPos.y);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.strokeStyle = P2_COLOR;
+                ctx.lineWidth = P2_WIDTH;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+
+                const currentProgress = getProgressAlongPath(pos, player1Path);
+                const currentMilestone = Math.floor(currentProgress / PROGRESS_INTERVAL);
+
+                if (currentMilestone > lastPlayedProgressMilestone && currentProgress < 1.0) {
+                    lastPlayedProgressMilestone = currentMilestone;
+                    playSound('chime', currentProgress);
                 }
             }
         }
@@ -1428,6 +1438,9 @@
             lastPlayedProgressMilestone = 0;
             currentActiveSegmentIndex = 0;
             currentPathLength = 0;
+            fuelConsumed = 0; // Reset fuel consumed for replay
+            previousCarPosition = null; // Reset previous car position tracking
+            defeatFlagged = false; // Reset defeat flag
             gameState = 'P2_WAITING';
             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
             
@@ -1452,80 +1465,52 @@
         }
 
         function animateCar() {
-            if (carProgress >= 1) {
-                // Check if we've exceeded the fuel limit
-                if (currentPathLength > maxAllowedPathLength) {
-                    gameState = 'P2_FINISHED';
-                    if (carAnimationFrame) {
-                        cancelAnimationFrame(carAnimationFrame);
-                    }
-                    // Stop engine sound immediately
-                    if (engineSound) {
-                        engineSound.mainOsc.stop();
-                        engineSound.varOsc.stop();
-                        engineSound = null;
-                    }
-                    // Play a failure sound
-                    playSound('alarm');
-                    playSound('alarm'); // Play twice for emphasis
-                    statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Aloita uudelleen alusta.';
-                    drawFailState(); // Show fail state
-                    return;
-                }
-
-                gameState = 'P2_FINISHED';
-                if (carAnimationFrame) {
-                    cancelAnimationFrame(carAnimationFrame);
-                }
-                // Stop engine sound immediately
-                if (engineSound) {
-                    engineSound.mainOsc.stop();
-                    engineSound.varOsc.stop();
-                    engineSound = null;
-                }
-                // Play a victory honk pattern: short-short-long
-                playHonk([0.1, 0.6], [0.1]);
-                
-                // Calculate and display score
-                const score = calculateScore();
-                statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
-                drawVictoryScreen(score); // Show victory screen
-                return;
+            // Initialize previous position on the first frame
+            if (previousCarPosition === null) {
+                previousCarPosition = { ...carPosition };
             }
 
-            // Calculate remaining fuel as we animate
-            const finalPathLength = player1TotalLength * carProgress; // Path length covered so far
-            
-            // Check if we're out of fuel during animation
-            if (finalPathLength > maxAllowedPathLength) {
-                gameState = 'P2_FINISHED';
-                if (carAnimationFrame) {
-                    cancelAnimationFrame(carAnimationFrame);
-                }
-                // Stop engine sound immediately
-                if (engineSound) {
-                    engineSound.mainOsc.stop();
-                    engineSound.varOsc.stop();
-                    engineSound = null;
-                }
-                // Play a failure sound
+            // --- Fuel Check ---
+            // Check if fuel has run out BEFORE checking the finish line
+            if (fuelConsumed > maxAllowedPathLength && !defeatFlagged) {
+                defeatFlagged = true;
                 playSound('alarm');
-                playSound('alarm'); // Play twice for emphasis
-                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Aloita uudelleen alusta.';
-                drawFailState(); // Show fail state
-                return;
+                playSound('alarm');
+                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä oikaista vähemmän.';
             }
 
-            // Calculate current and upcoming curvature
+            // --- Finish Line Check ---
+            if (carProgress >= 1) {
+                gameState = 'P2_FINISHED';
+                if (carAnimationFrame) {
+                    cancelAnimationFrame(carAnimationFrame);
+                    carAnimationFrame = null; // Ensure it's cleared
+                }
+                if (engineSound) {
+                    engineSound.mainOsc.stop();
+                    engineSound.varOsc.stop();
+                    engineSound = null;
+                }
+
+                if (defeatFlagged) {
+                    drawFailState();
+                } else {
+                    playHonk([0.1, 0.6], [0.1]);
+                    const score = calculateScore();
+                    statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
+                    drawVictoryScreen(score);
+                }
+                redrawAll(); // Redraw one last time to show final state
+                return; // Stop the animation loop
+            }
+
+            // --- Car Movement Calculation (existing logic) ---
             const currentCurvature = calculateCurvature(carProgress, player2Path);
             const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
             const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path);
-
-            // Calculate target speed based on current curvature
             const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
             let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
 
-            // Apply finish line deceleration
             const distanceToFinish = 1 - carProgress;
             if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
                 const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
@@ -1533,72 +1518,51 @@
                 targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
             }
 
-            // Get dynamic deceleration rate based on upcoming curves
             const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
 
-            // Gradually adjust current speed towards target speed
             if (targetSpeed > currentSpeed) {
-                // Accelerate with a rate that depends on how far we are from target speed
                 const speedDiff = targetSpeed - currentSpeed;
-                const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED); // Faster acceleration when far from target
+                const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED);
                 currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
             } else {
-                // Decelerate with dynamic rate
                 currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
             }
 
-            // Calculate the next position based on current speed
-            const currentPos = getPointAlongPath(carProgress, player2Path);
             const nextProgress = carProgress + (currentSpeed / player1TotalLength);
             const nextPos = getPointAlongPath(nextProgress, player2Path);
-            
-            // Update car position and progress
+
+            // --- Fuel Consumption Update ---
+            // Calculate distance moved this frame and add to fuel consumed
+            const distanceMoved = dist(carPosition, nextPos);
+            fuelConsumed += distanceMoved;
+
+            // --- Update Car State ---
+            previousCarPosition = { ...carPosition }; // Store current position before updating
             carPosition = nextPos;
             carProgress = nextProgress;
-            
-            // Add current position to car trail
             carTrail.push({ ...carPosition });
-            
+
+            // --- Update Car Angle and Sounds (existing logic) ---
             const direction = getDirectionAlongPath(carProgress, player2Path);
             const targetCarAngle = Math.atan2(direction.y, direction.x);
-            
-            // Calculate angle change
             const angleDiff = targetCarAngle - currentCarAngle;
             const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
-            
-            // Handle sound effects based on turning
+
             const currentTime = Date.now();
             if (Math.abs(normalizedDiff) > TURN_THRESHOLD && currentTime - lastAngleChange > SOUND_COOLDOWN) {
                 playSound('screech');
                 lastAngleChange = currentTime;
             }
-            
-            // Update car angle
             currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
-            
-            // Start engine sound if not already playing
+
             if (!engineSound) {
                 engineSound = playSound('engine');
             } else {
-                // Update engine sound based on current speed
                 engineSound.updateSpeed(currentSpeed);
             }
-            
-            redrawAll();
-            // Draw the car trail
-            if (carTrail.length > 1) {
-                ctx.beginPath();
-                ctx.moveTo(carTrail[0].x, carTrail[0].y);
-                for (let i = 1; i < carTrail.length; i++) {
-                    ctx.lineTo(carTrail[i].x, carTrail[i].y);
-                }
-                ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; // Semi-transparent red
-                ctx.lineWidth = 3;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.stroke();
-            }
-            drawCar(carPosition, currentCarAngle);
+
+            // --- Redraw and Continue Animation ---
+            redrawAll(); // Includes drawing the updated fuel gauge
 
             carAnimationFrame = requestAnimationFrame(animateCar);
         }
