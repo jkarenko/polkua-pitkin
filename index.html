@@ -913,18 +913,15 @@
             ctx.shadowOffsetY = 2;
             
             // Draw main message
-            ctx.fillText('Pääsit Maaliin!', canvas.width/2, canvas.height/2 - 60);
+            ctx.fillText('Pääsit Maaliin!', canvas.width/2, canvas.height/2 - 100);
             
             // Draw score
             ctx.font = 'bold 36px sans-serif';
-            ctx.fillText(`Pisteet: ${score}`, canvas.width/2, canvas.height/2);
+            ctx.fillText(`Pisteet: ${score}`, canvas.width/2, canvas.height/2 - 40);
             
             // Draw score message
             ctx.font = '24px sans-serif';
-            ctx.fillText(getScoreMessage(score), canvas.width/2, canvas.height/2 + 40);
-            
-            // Draw submessage
-            ctx.fillText('Aloita uusi peli', canvas.width/2, canvas.height/2 + 80);
+            ctx.fillText(getScoreMessage(score), canvas.width/2, canvas.height/2);
             
             // Reset shadow
             ctx.shadowColor = 'transparent';
@@ -932,7 +929,134 @@
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 0;
             
+            // Draw buttons
+            const buttonWidth = 200;
+            const buttonHeight = 50;
+            const buttonSpacing = 20;
+            const totalWidth = buttonWidth * 2 + buttonSpacing;
+            const startX = canvas.width/2 - totalWidth/2;
+            
+            // Replay button
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillRect(startX, canvas.height/2 + 40, buttonWidth, buttonHeight);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 20px sans-serif';
+            ctx.fillText('Pelaa Uudelleen', startX + buttonWidth/2, canvas.height/2 + 70);
+            
+            // New game button
+            ctx.fillStyle = '#2196F3';
+            ctx.fillRect(startX + buttonWidth + buttonSpacing, canvas.height/2 + 40, buttonWidth, buttonHeight);
+            ctx.fillStyle = 'white';
+            ctx.fillText('Uusi Peli', startX + buttonWidth + buttonSpacing + buttonWidth/2, canvas.height/2 + 70);
+            
             ctx.restore();
+        }
+
+        function drawFailState() {
+            // Draw semi-transparent black overlay
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw fail message
+            ctx.save();
+            ctx.fillStyle = '#FF4444';
+            ctx.font = 'bold 48px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Add text shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            
+            // Draw main message
+            ctx.fillText('POLTTOAINE LOPPUI!', canvas.width/2, canvas.height/2 - 60);
+            
+            // Reset shadow
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            
+            // Draw buttons
+            const buttonWidth = 200;
+            const buttonHeight = 50;
+            const buttonSpacing = 20;
+            const totalWidth = buttonWidth * 2 + buttonSpacing;
+            const startX = canvas.width/2 - totalWidth/2;
+            
+            // Replay button
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillRect(startX, canvas.height/2 + 20, buttonWidth, buttonHeight);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 20px sans-serif';
+            ctx.fillText('Pelaa Uudelleen', startX + buttonWidth/2, canvas.height/2 + 50);
+            
+            // New game button
+            ctx.fillStyle = '#2196F3';
+            ctx.fillRect(startX + buttonWidth + buttonSpacing, canvas.height/2 + 20, buttonWidth, buttonHeight);
+            ctx.fillStyle = 'white';
+            ctx.fillText('Uusi Peli', startX + buttonWidth + buttonSpacing + buttonWidth/2, canvas.height/2 + 50);
+            
+            ctx.restore();
+        }
+
+        function isPointInButton(point, buttonX, buttonY, buttonWidth, buttonHeight) {
+            return point.x >= buttonX && 
+                   point.x <= buttonX + buttonWidth && 
+                   point.y >= buttonY && 
+                   point.y <= buttonY + buttonHeight;
+        }
+
+        function handleVictoryFailClick(e) {
+            if (gameState !== 'P2_FINISHED') return;
+            
+            const pos = getEventCoords(e);
+            const buttonWidth = 200;
+            const buttonHeight = 50;
+            const buttonSpacing = 20;
+            const totalWidth = buttonWidth * 2 + buttonSpacing;
+            const startX = canvas.width/2 - totalWidth/2;
+            
+            // Check if click is in replay button
+            if (isPointInButton(pos, startX, canvas.height/2 + 40, buttonWidth, buttonHeight)) {
+                replayLevel();
+            }
+            // Check if click is in new game button
+            else if (isPointInButton(pos, startX + buttonWidth + buttonSpacing, canvas.height/2 + 40, buttonWidth, buttonHeight)) {
+                resetGame();
+            }
+        }
+
+        function replayLevel() {
+            // Keep player1Path and smoothedPath, but reset everything else
+            player2Path = [];
+            isDrawing = false;
+            lastPlayedProgressMilestone = 0;
+            currentActiveSegmentIndex = 0;
+            currentPathLength = 0;
+            gameState = 'P2_WAITING';
+            statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
+            
+            // Reset car state
+            if (carAnimationFrame) {
+                cancelAnimationFrame(carAnimationFrame);
+                carAnimationFrame = null;
+            }
+            carProgress = 0;
+            carPosition = { x: 0, y: 0 };
+            carAngle = 0;
+            carTrail = [];
+            
+            // Stop engine sound if playing
+            if (engineSound) {
+                engineSound.mainOsc.stop();
+                engineSound.varOsc.stop();
+                engineSound = null;
+            }
+            
+            redrawAll();
         }
 
         function animateCar() {
@@ -974,6 +1098,29 @@
                 const score = calculateScore();
                 statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
                 redrawAll(); // Redraw to show victory screen
+                return;
+            }
+
+            // Calculate remaining fuel as we animate
+            const finalPathLength = player1TotalLength * carProgress; // Path length covered so far
+            
+            // Check if we're out of fuel during animation
+            if (finalPathLength > maxAllowedPathLength) {
+                gameState = 'P2_FINISHED';
+                if (carAnimationFrame) {
+                    cancelAnimationFrame(carAnimationFrame);
+                }
+                // Stop engine sound immediately
+                if (engineSound) {
+                    engineSound.mainOsc.stop();
+                    engineSound.varOsc.stop();
+                    engineSound = null;
+                }
+                // Play a failure sound
+                playSound('alarm');
+                playSound('alarm'); // Play twice for emphasis
+                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Aloita uudelleen alusta.';
+                redrawAll(); // Redraw to show fail state
                 return;
             }
 
@@ -1082,10 +1229,9 @@
             // Calculate remaining fuel percentage
             let remainingFuel;
             if (gameState === 'CAR_ANIMATING') {
-                // During car animation, start at 100% and decrease to final amount
-                const finalFuel = 1 - (currentPathLength / maxAllowedPathLength);
-                // Interpolate between 1 (100%) and finalFuel based on car progress
-                remainingFuel = 1 - (carProgress * (1 - finalFuel));
+                // During car animation, calculate based on actual path length covered
+                const pathCovered = player1TotalLength * carProgress;
+                remainingFuel = Math.max(0, 1 - (pathCovered / maxAllowedPathLength));
             } else {
                 // During drawing, fuel decreases based on path length
                 remainingFuel = Math.max(0, 1 - (currentPathLength / maxAllowedPathLength));
@@ -1127,40 +1273,6 @@
             ctx.shadowOffsetY = 1;
             
             ctx.fillText(`Polttoaine: ${Math.round(remainingFuel * 100)}%`, x + gaugeWidth/2, y + gaugeHeight/2);
-            
-            // Reset shadow
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            
-            ctx.restore();
-        }
-
-        function drawFailState() {
-            // Draw semi-transparent black overlay
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw fail message
-            ctx.save();
-            ctx.fillStyle = '#FF4444';
-            ctx.font = 'bold 48px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            
-            // Add text shadow
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-            ctx.shadowBlur = 10;
-            ctx.shadowOffsetX = 2;
-            ctx.shadowOffsetY = 2;
-            
-            // Draw main message
-            ctx.fillText('POLTTOAINE LOPPUI!', canvas.width/2, canvas.height/2 - 40);
-            
-            // Draw submessage
-            ctx.font = '24px sans-serif';
-            ctx.fillText('Aloita uudelleen alusta', canvas.width/2, canvas.height/2 + 20);
             
             // Reset shadow
             ctx.shadowColor = 'transparent';
@@ -1213,11 +1325,16 @@
                 drawCar(carPosition, currentCarAngle);
             }
             
-            // Draw fail state if fuel ran out
-            if (gameState === 'P2_FINISHED' && currentPathLength > maxAllowedPathLength) {
-                drawFailState();
-            } else if (gameState === 'P2_FINISHED' && currentPathLength <= maxAllowedPathLength) {
-                drawVictoryScreen(calculateScore());
+            // Draw fail state if fuel ran out, whether at finish or during animation
+            if (gameState === 'P2_FINISHED') {
+                // Get path length covered so far
+                const pathCovered = player1TotalLength * carProgress;
+                
+                if (pathCovered > maxAllowedPathLength || currentPathLength > maxAllowedPathLength) {
+                    drawFailState();
+                } else {
+                    drawVictoryScreen(calculateScore());
+                }
             }
 
             // Draw fuel gauge last so it's always on top
@@ -1483,6 +1600,10 @@
         });
 
         window.addEventListener('resize', resizeCanvas);
+
+        // Add click handler for victory/fail screens
+        canvas.addEventListener('click', handleVictoryFailClick);
+        canvas.addEventListener('touchend', handleVictoryFailClick);
 
         // Initial setup
         resizeCanvas();
