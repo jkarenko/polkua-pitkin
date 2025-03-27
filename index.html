@@ -188,7 +188,7 @@
         const START_END_SNAP_RADIUS_FACTOR = 1.5;
         const SCORE_THRESHOLD = 20;
         const SCORE_POINTS = 100;
-        const MAX_PATH_LENGTH_FACTOR = 1.10;
+        const MAX_PATH_LENGTH_FACTOR = 1.20;
 
         // Car constants
         const CAR_PIXEL_SPEED = 2;
@@ -563,7 +563,8 @@
              endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
 
              // Create smoothed path for car to follow
-             smoothedPath = smoothPath(player1Path);
+             // smoothedPath = smoothPath(player1Path);
+             smoothedPath = player1Path;
 
              // Calculate progress markers
              progressMarkers = [];
@@ -691,7 +692,11 @@
             let remainingFuel;
             if (gameState === 'CAR_ANIMATING') {
                 // Use actual fuel consumed during animation
-                remainingFuel = Math.max(0, 1 - (fuelConsumed / maxAllowedPathLength));
+                if (defeatFlagged) {
+                    remainingFuel = Math.max(0, 1 - (fuelConsumed * MAX_PATH_LENGTH_FACTOR / maxAllowedPathLength));
+                } else {
+                    remainingFuel = Math.max(0, 1 - (fuelConsumed / maxAllowedPathLength));
+                }
             } else { // gameState === 'P2_DRAWING'
                 // Use path length drawn so far
                 remainingFuel = Math.max(0, 1 - (currentPathLength / maxAllowedPathLength));
@@ -1129,7 +1134,7 @@
                 defeatFlagged = true;
                 playSound('alarm');
                 playSound('alarm');
-                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä oikaista vähemmän.';
+                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
             }
 
             // --- Finish Line Check ---
