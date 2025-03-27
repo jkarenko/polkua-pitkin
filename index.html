@@ -95,6 +95,7 @@
         let audioCtx = null;
         let hasInteracted = false; // For resuming audio context
         let currentActiveSegmentIndex = 0; // Add this to the state variables at the top
+        let progressMarkers = []; // Array to store progress milestone points with their directions
 
         // --- Audio ---
         function initAudio() {
@@ -342,6 +343,26 @@
             ctx.fill();
         }
 
+        function drawDirectionalMarker(point, direction, color = 'rgba(0, 0, 0, 0.3)') {
+            const arrowLength = P1_WIDTH * 0; // Length of the arrow
+            const arrowWidth = P1_WIDTH * 0.4; // Width of the arrow head
+            
+            ctx.save();
+            ctx.translate(point.x, point.y);
+            ctx.rotate(Math.atan2(direction.y, direction.x));
+            
+            // Draw arrow head
+            ctx.beginPath();
+            ctx.moveTo(arrowLength, 0);
+            ctx.lineTo(arrowLength - arrowWidth, -arrowWidth/2);
+            ctx.lineTo(arrowLength - arrowWidth, arrowWidth/2);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
         function redrawAll() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -350,6 +371,11 @@
                 drawCircle(startMarker, startMarker.radius, START_COLOR);
                 drawCircle(endMarker, endMarker.radius, END_COLOR);
                 drawPath(player1Path, P1_COLOR, P1_WIDTH, false);
+                
+                // Draw progress markers, skipping the first and last markers
+                progressMarkers.slice(1, -1).forEach(marker => {
+                    drawDirectionalMarker(marker.point, marker.direction);
+                });
             } else if (player1Path.length > 0) {
                 // Draw P1 path with isDrawing flag based on game state
                 drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === 'P1_DRAWING');
@@ -389,6 +415,40 @@
              startMarker = { ...player1Path[0], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
              endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
 
+             // Calculate progress markers
+             progressMarkers = [];
+             for (let i = 0; i <= 10; i++) { // 10 segments (0% to 100%)
+                 const targetProgress = i * PROGRESS_INTERVAL;
+                 let accumulatedLength = 0;
+                 let markerPoint = null;
+                 let markerDirection = null;
+
+                 for (let j = 0; j < player1Path.length - 1; j++) {
+                     const segmentLength = dist(player1Path[j], player1Path[j + 1]);
+                     if (accumulatedLength + segmentLength >= targetProgress * player1TotalLength) {
+                         const t = (targetProgress * player1TotalLength - accumulatedLength) / segmentLength;
+                         markerPoint = {
+                             x: player1Path[j].x + t * (player1Path[j + 1].x - player1Path[j].x),
+                             y: player1Path[j].y + t * (player1Path[j + 1].y - player1Path[j].y)
+                         };
+                         markerDirection = {
+                             x: player1Path[j + 1].x - player1Path[j].x,
+                             y: player1Path[j + 1].y - player1Path[j].y
+                         };
+                         // Normalize direction
+                         const length = Math.sqrt(markerDirection.x * markerDirection.x + markerDirection.y * markerDirection.y);
+                         markerDirection.x /= length;
+                         markerDirection.y /= length;
+                         break;
+                     }
+                     accumulatedLength += segmentLength;
+                 }
+
+                 if (markerPoint && markerDirection) {
+                     progressMarkers.push({ point: markerPoint, direction: markerDirection });
+                 }
+             }
+
              redrawAll();
         }
 
@@ -401,6 +461,7 @@
             lastPlayedProgressMilestone = 0;
             startMarker = null;
             endMarker = null;
+            progressMarkers = []; // Clear progress markers
             doneButton.style.display = 'inline-block';
             resetButton.style.display = 'none';
             statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
