@@ -398,10 +398,53 @@
             ctx.translate(position.x, position.y);
             ctx.rotate(angle);
             
-            // Draw wheels
+            // Calculate average direction vector for front wheels
+            const lookAheadPoints = 5; // Number of points to look ahead
+            let avgDirection = { x: 0, y: 0 };
+            let count = 0;
+            
+            // Get points ahead of current position
+            for (let i = 0; i < lookAheadPoints; i++) {
+                const aheadProgress = Math.min(1, carProgress + (i + 1) * 0.02);
+                const aheadPoint = getPointAlongPath(aheadProgress, player1Path);
+                if (aheadPoint) {
+                    avgDirection.x += aheadPoint.x - position.x;
+                    avgDirection.y += aheadPoint.y - position.y;
+                    count++;
+                }
+            }
+            
+            // Normalize average direction
+            if (count > 0) {
+                const length = Math.sqrt(avgDirection.x * avgDirection.x + avgDirection.y * avgDirection.y);
+                if (length > 0) {
+                    avgDirection.x /= length;
+                    avgDirection.y /= length;
+                }
+            }
+            
+            // Calculate wheel angle based on average direction
+            const wheelAngle = Math.atan2(avgDirection.y, avgDirection.x) - angle;
+            
+            // Draw wheels with rotation
+            ctx.save();
+            ctx.translate(CAR_WIDTH/2 - 10, -CAR_HEIGHT/2);
+            ctx.rotate(wheelAngle);
             ctx.fillStyle = '#000';
-            ctx.fillRect(CAR_WIDTH/2 - 15, -CAR_HEIGHT/2 - 3, 10, CAR_HEIGHT + 6);  // Front wheels
-            ctx.fillRect(-CAR_WIDTH/2 + 8, -CAR_HEIGHT/2 - 3, 10, CAR_HEIGHT + 6); // Rear wheels
+            ctx.fillRect(-5, -1, 10, 2);
+            ctx.restore();
+            
+            ctx.save();
+            ctx.translate(CAR_WIDTH/2 - 10, CAR_HEIGHT/2);
+            ctx.rotate(wheelAngle);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(-5, -1, 10, 2);
+            ctx.restore();
+            
+            // Draw rear wheels (static)
+            ctx.fillStyle = '#000';
+            ctx.fillRect(-CAR_WIDTH/2 + 8, -CAR_HEIGHT/2 - 1, 10, 2);
+            ctx.fillRect(-CAR_WIDTH/2 + 8, CAR_HEIGHT/2 - 1, 10, 2);
             
             // Draw car body
             ctx.fillStyle = CAR_COLOR;
