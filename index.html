@@ -168,6 +168,7 @@
     <script type="module">
         import { drawCar, CAR_CONSTANTS, createCar } from './src/car.js';
         import { playSound, playHonk, setHasInteracted } from './src/audio.js';
+        import { generateDecorationsForPath } from './src/decoration.js';
         
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -224,6 +225,7 @@
         let fuelConsumed = 0;
         let previousCarPosition = null;
         let defeatFlagged = false;
+        let decorations = [];
 
         // Car state
         let carProgress = 0;
@@ -267,6 +269,47 @@
             t = Math.max(0, Math.min(1, t));
             const projection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
             return dist(p, projection);
+        }
+
+        // New helper function to find the closest point on a path
+        function findClosestPointOnPath(point, path) {
+            if (!path || path.length < 1) return null;
+            if (path.length === 1) return { ...path[0] };
+
+            let minDistanceSq = Infinity;
+            let closestPoint = null;
+
+            for (let i = 0; i < path.length - 1; i++) {
+                const a = path[i];
+                const b = path[i + 1];
+                const l2 = distSq(a, b);
+                let projection;
+                let dSq;
+
+                if (l2 === 0) { // Segment is a point
+                    projection = a;
+                    dSq = distSq(point, a);
+                } else {
+                    let t = ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / l2;
+                    t = Math.max(0, Math.min(1, t));
+                    projection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+                    dSq = distSq(point, projection);
+                }
+
+                if (dSq < minDistanceSq) {
+                    minDistanceSq = dSq;
+                    closestPoint = projection;
+                }
+            }
+             // Check distance to the very last point
+             const distToLastSq = distSq(point, path[path.length - 1]);
+             if (distToLastSq < minDistanceSq) {
+                 // minDistanceSq = distToLastSq; // Not needed, just update point
+                 closestPoint = { ...path[path.length - 1] };
+             }
+
+
+            return closestPoint; // Returns the {x, y} of the closest point on the path centerline
         }
 
         function isPointWithinPath(point, path, threshold) {
@@ -600,6 +643,11 @@
                  }
              }
 
+             // Generate decorations
+             const decorationDensity = 5; // <-- INCREASED from 0.8. Try values like 5 or 10
+             const decorationOffset = P1_WIDTH * 1.5; // Adjust offset based on path width
+             decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
+
              redrawAll();
         }
 
@@ -747,43 +795,71 @@
         function redrawAll() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Player 1 path components if available
+            // 1. Draw base P1 path elements (always behind everything else)
             if (startMarker && endMarker) {
+                drawPath(player1Path, P1_COLOR, P1_WIDTH, false);
                 drawCircle(startMarker, startMarker.radius, START_COLOR);
                 drawCircle(endMarker, endMarker.radius, END_COLOR);
-                drawPath(player1Path, P1_COLOR, P1_WIDTH, false);
-                
                 progressMarkers.slice(1, -1).forEach(marker => {
                     drawDirectionalMarker(marker.point, marker.direction);
                 });
             } else if (player1Path.length > 0) {
-                drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === 'P1_DRAWING');
+                 drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === 'P1_DRAWING');
             }
 
-            if (gameState === 'P2_DRAWING' || gameState === 'P2_WAITING') {
-                drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
-            }
+            // 2. Draw the car trail if animating (behind decorations and car)
+             if (gameState === 'CAR_ANIMATING' && carTrail.length > 1) {
+                 ctx.beginPath();
+                 ctx.moveTo(carTrail[0].x, carTrail[0].y);
+                 for (let i = 1; i < carTrail.length; i++) {
+                     ctx.lineTo(carTrail[i].x, carTrail[i].y);
+                 }
+                 ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; // Red trail color
+                 ctx.lineWidth = 3;
+                 ctx.lineCap = 'round';
+                 ctx.lineJoin = 'round';
+                 ctx.stroke();
+             }
 
-            // Only draw car trail and car during animation phase
-            if (gameState === 'CAR_ANIMATING') {
-                if (carTrail.length > 1) {
-                    ctx.beginPath();
-                    ctx.moveTo(carTrail[0].x, carTrail[0].y);
-                    for (let i = 1; i < carTrail.length; i++) {
-                        ctx.lineTo(carTrail[i].x, carTrail[i].y);
+
+            // 3. Create a list of drawable items (decorations, P2 path, car)
+            let drawableItems = [...decorations]; // Start with decorations
+
+            // Add P2 Path wrapper ONLY if P2 is drawing or waiting
+            if ((gameState === 'P2_DRAWING' || gameState === 'P2_WAITING') && player2Path.length > 0) {
+                drawableItems.push({
+                    getLowestY: () => {
+                        if (player2Path.length === 0) return -Infinity;
+                        return Math.max(...player2Path.map(p => p.y));
+                    },
+                    draw: (context) => {
+                        drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
                     }
-                    ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)';
-                    ctx.lineWidth = 3;
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    ctx.stroke();
-                }
-
-                if (carPosition) {
-                    drawCar(ctx, carPosition, currentCarAngle, currentWheelAngle, carConfig || { color: '#FF4444' });
-                }
+                });
             }
 
+            // Add ONLY the Car sprite wrapper if animating (trail is drawn separately now)
+            if (gameState === 'CAR_ANIMATING' && carPosition) {
+                 drawableItems.push({
+                    getLowestY: () => {
+                        const carHeight = CAR_CONSTANTS?.HEIGHT || 20;
+                        return carPosition.y + carHeight / 2;
+                    },
+                    draw: (context) => {
+                        // Only draw the car sprite here
+                        drawCar(context, carPosition, currentCarAngle, currentWheelAngle, carConfig || { color: '#FF4444' });
+                    }
+                });
+            }
+
+            // 4. Sort all drawable items by their lowest Y coordinate
+            drawableItems = drawableItems.filter(item => item && typeof item.getLowestY === 'function' && typeof item.draw === 'function');
+            drawableItems.sort((a, b) => a.getLowestY() - b.getLowestY());
+
+            // 5. Draw the sorted items (decorations, P2 path, car)
+            drawableItems.forEach(item => item.draw(ctx));
+
+            // 6. Draw UI elements last (on top of everything)
             drawFuelGauge();
         }
 
@@ -821,6 +897,7 @@
             previousCarPosition = null; // Reset previous car position tracking
             defeatFlagged = false; // Reset defeat flag
             carConfig = null; // Reset car configuration
+            decorations = []; // Clear decorations array
             doneButton.style.display = 'inline-block';
             resetButton.style.display = 'none';
             statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
