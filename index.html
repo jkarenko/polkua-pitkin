@@ -1009,7 +1009,6 @@
 
         function handleEnd(e) {
             if (!isDrawing) return;
-            if (e.touches && e.touches.length > 0) return;
             e.preventDefault();
 
             if (gameState === 'P1_DRAWING') {
