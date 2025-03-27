@@ -334,6 +334,22 @@
                  ctx.lineTo(path[i].x, path[i].y);
              }
              ctx.stroke();
+
+             // Draw the dashed guide line for Player 1's path on top of the main path
+             if (!isDrawing && color === P1_COLOR) {
+                 ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+                 ctx.lineWidth = 1;
+                 ctx.setLineDash([5, 5]); // Create dashed line pattern
+                 ctx.lineCap = 'butt';
+                 ctx.lineJoin = 'miter';
+                 ctx.beginPath();
+                 ctx.moveTo(path[0].x, path[0].y);
+                 for (let i = 1; i < path.length; i++) {
+                     ctx.lineTo(path[i].x, path[i].y);
+                 }
+                 ctx.stroke();
+                 ctx.setLineDash([]); // Reset dash pattern
+             }
          }
 
         function drawCircle(center, radius, color) {
