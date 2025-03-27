@@ -83,8 +83,15 @@
         const PROGRESS_INTERVAL = 0.10; // 10%
         const START_END_SNAP_RADIUS_FACTOR = 1.5; // Multiplier for start/end circle click radius
 
+        // Car constants
+        const CAR_WIDTH = 50;
+        const CAR_HEIGHT = 20;
+        const CAR_COLOR = '#FF4444';
+        const CAR_SPEED = 0.002; // Speed of car movement (0-1 per frame)
+        const CAR_ANIMATION_INTERVAL = 16; // ~60fps
+
         // --- State ---
-        let gameState = 'P1_DRAWING'; // 'P1_DRAWING', 'P2_WAITING', 'P2_DRAWING', 'P2_FINISHED'
+        let gameState = 'P1_DRAWING'; // 'P1_DRAWING', 'P2_WAITING', 'P2_DRAWING', 'P2_FINISHED', 'CAR_ANIMATING'
         let player1Path = [];
         let player2Path = [];
         let isDrawing = false;
@@ -96,6 +103,12 @@
         let hasInteracted = false; // For resuming audio context
         let currentActiveSegmentIndex = 0; // Add this to the state variables at the top
         let progressMarkers = []; // Array to store progress milestone points with their directions
+
+        // Car state
+        let carProgress = 0;
+        let carAnimationFrame = null;
+        let carPosition = { x: 0, y: 0 };
+        let carAngle = 0;
 
         // --- Audio ---
         function initAudio() {
@@ -380,6 +393,154 @@
             ctx.restore();
         }
 
+        function drawCar(position, angle) {
+            ctx.save();
+            ctx.translate(position.x, position.y);
+            ctx.rotate(angle);
+            
+            // Draw wheels
+            ctx.fillStyle = '#000';
+            ctx.fillRect(CAR_WIDTH/2 - 15, -CAR_HEIGHT/2 - 3, 10, CAR_HEIGHT + 6);  // Front wheels
+            ctx.fillRect(-CAR_WIDTH/2 + 8, -CAR_HEIGHT/2 - 3, 10, CAR_HEIGHT + 6); // Rear wheels
+            
+            // Draw car body
+            ctx.fillStyle = CAR_COLOR;
+            ctx.fillRect(-CAR_WIDTH/2, -CAR_HEIGHT/2, CAR_WIDTH, CAR_HEIGHT);
+
+            // Draw car roof with multiply blend mode for realistic darkening
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';  // Use black with 30% opacity
+            ctx.fillRect(-CAR_WIDTH/4, -CAR_HEIGHT/2, CAR_WIDTH/2, CAR_HEIGHT);
+            ctx.globalCompositeOperation = 'source-over';  // Reset to default blend mode
+
+            // Draw windows (in top-down perspective)
+            ctx.fillStyle = '#4a90e2';  // Light blue color for windows
+            // Rear windshield
+            ctx.beginPath();
+            ctx.moveTo(-CAR_WIDTH/4, -CAR_HEIGHT/2 + 3);
+            ctx.lineTo(-CAR_WIDTH/4, CAR_HEIGHT/2 - 3);
+            ctx.lineTo(-CAR_WIDTH/2 + 4, CAR_HEIGHT/2);
+            ctx.lineTo(-CAR_WIDTH/2 + 4, -CAR_HEIGHT/2);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Front windshield
+            ctx.beginPath();
+            ctx.moveTo(CAR_WIDTH/4, -CAR_HEIGHT/2);
+            ctx.lineTo(CAR_WIDTH/4, CAR_HEIGHT/2);
+            ctx.lineTo(CAR_WIDTH/4 - 3, CAR_HEIGHT/2 - 5);
+            ctx.lineTo(CAR_WIDTH/4 - 3, -CAR_HEIGHT/2 + 5);
+            ctx.closePath();
+            ctx.fill();
+
+            // Side windows - Left side
+            // Front door window
+            ctx.beginPath();
+            ctx.moveTo(-CAR_WIDTH/4, -CAR_HEIGHT/2);
+            ctx.lineTo(0, -CAR_HEIGHT/2);
+            ctx.lineTo(0 - 3, -CAR_HEIGHT/2 + 3);
+            ctx.lineTo(-CAR_WIDTH/4 + 3, -CAR_HEIGHT/2 + 3);
+            ctx.closePath();
+            ctx.fill();
+
+            // Back door window
+            ctx.beginPath();
+            ctx.moveTo(0, -CAR_HEIGHT/2);
+            ctx.lineTo(CAR_WIDTH/4, -CAR_HEIGHT/2);
+            ctx.lineTo(CAR_WIDTH/4 - 3, -CAR_HEIGHT/2 + 3);
+            ctx.lineTo(0 - 3, -CAR_HEIGHT/2 + 3);
+            ctx.closePath();
+            ctx.fill();
+
+            // Side windows - Right side
+            // Front door window
+            ctx.beginPath();
+            ctx.moveTo(-CAR_WIDTH/4, CAR_HEIGHT/2);
+            ctx.lineTo(0, CAR_HEIGHT/2);
+            ctx.lineTo(0 - 3, CAR_HEIGHT/2 - 3);
+            ctx.lineTo(-CAR_WIDTH/4 + 3, CAR_HEIGHT/2 - 3);
+            ctx.closePath();
+            ctx.fill();
+
+            // Back door window
+            ctx.beginPath();
+            ctx.moveTo(0, CAR_HEIGHT/2);
+            ctx.lineTo(CAR_WIDTH/4, CAR_HEIGHT/2);
+            ctx.lineTo(CAR_WIDTH/4 - 3, CAR_HEIGHT/2 - 3);
+            ctx.lineTo(0 - 3, CAR_HEIGHT/2 - 3);
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw headlights
+            ctx.fillStyle = '#FFF';
+            ctx.fillRect(CAR_WIDTH/2 - 2, -CAR_HEIGHT/2 + 1, 3, 5);    // Left headlight
+            ctx.fillRect(CAR_WIDTH/2 - 2, CAR_HEIGHT/2 - 6, 3, 5);  // Right headlight
+
+            ctx.restore();
+        }
+
+        function getPointAlongPath(progress, path) {
+            if (path.length < 2) return path[0];
+            
+            let accumulatedLength = 0;
+            for (let i = 0; i < path.length - 1; i++) {
+                const segmentLength = dist(path[i], path[i + 1]);
+                if (accumulatedLength + segmentLength >= progress * player1TotalLength) {
+                    const t = (progress * player1TotalLength - accumulatedLength) / segmentLength;
+                    return {
+                        x: path[i].x + t * (path[i + 1].x - path[i].x),
+                        y: path[i].y + t * (path[i + 1].y - path[i].y)
+                    };
+                }
+                accumulatedLength += segmentLength;
+            }
+            return path[path.length - 1];
+        }
+
+        function getDirectionAlongPath(progress, path) {
+            if (path.length < 2) return { x: 0, y: 0 };
+            
+            let accumulatedLength = 0;
+            for (let i = 0; i < path.length - 1; i++) {
+                const segmentLength = dist(path[i], path[i + 1]);
+                if (accumulatedLength + segmentLength >= progress * player1TotalLength) {
+                    const t = (progress * player1TotalLength - accumulatedLength) / segmentLength;
+                    const direction = {
+                        x: path[i + 1].x - path[i].x,
+                        y: path[i + 1].y - path[i].y
+                    };
+                    // Normalize direction
+                    const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+                    return {
+                        x: direction.x / length,
+                        y: direction.y / length
+                    };
+                }
+                accumulatedLength += segmentLength;
+            }
+            return { x: 0, y: 0 };
+        }
+
+        function animateCar() {
+            if (carProgress >= 1) {
+                gameState = 'P2_FINISHED';
+                if (carAnimationFrame) {
+                    cancelAnimationFrame(carAnimationFrame);
+                }
+                return;
+            }
+
+            carProgress += CAR_SPEED;
+            carPosition = getPointAlongPath(carProgress, player1Path);
+            const direction = getDirectionAlongPath(carProgress, player1Path);
+            carAngle = Math.atan2(direction.y, direction.x);
+
+            redrawAll();
+            drawCar(carPosition, carAngle);
+
+            carAnimationFrame = requestAnimationFrame(animateCar);
+        }
+
         function redrawAll() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -482,6 +643,16 @@
             doneButton.style.display = 'inline-block';
             resetButton.style.display = 'none';
             statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
+            
+            // Reset car state
+            if (carAnimationFrame) {
+                cancelAnimationFrame(carAnimationFrame);
+                carAnimationFrame = null;
+            }
+            carProgress = 0;
+            carPosition = { x: 0, y: 0 };
+            carAngle = 0;
+            
             ctx.clearRect(0, 0, canvas.width, canvas.height);
          }
 
@@ -563,38 +734,43 @@
 
         function handleEnd(e) {
             if (!isDrawing) return;
-             if (e.touches && e.touches.length > 0) return;
+            if (e.touches && e.touches.length > 0) return;
             e.preventDefault();
 
             if (gameState === 'P1_DRAWING') {
                 isDrawing = false;
-                 if (player1Path.length < 2) {
-                     statusDiv.textContent = "Pelaaja 1: Piirrä polku ja paina 'Valmis'.";
-                 } else {
-                     statusDiv.textContent = "Pelaaja 1: Paina 'Valmis' tai jatka piirtämistä.";
-                 }
+                if (player1Path.length < 2) {
+                    statusDiv.textContent = "Pelaaja 1: Polku on liian lyhyt! Piirrä pitempi polku.";
+                } else {
+                    statusDiv.textContent = "Pelaaja 1: Paina 'Valmis' tai jatka piirtämistä.";
+                }
             } else if (gameState === 'P2_DRAWING') {
                 const lastPos = player2Path.slice(-1)[0];
-                 isDrawing = false;
+                isDrawing = false;
 
                 if (endMarker && dist(lastPos, endMarker) <= endMarker.snapRadius) {
                     const finalProgress = getProgressAlongPath(lastPos, player1Path);
                     if (finalProgress >= 0.95) {
-                        gameState = 'P2_FINISHED';
+                        gameState = 'CAR_ANIMATING';
                         statusDiv.textContent = 'Pelaaja 2 Voitti! Hienosti piirretty! 🎉';
                         playSound('success');
                         redrawAll();
                         drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
+                        
+                        // Reset car state and start animation
+                        carProgress = 0;
+                        carPosition = { ...player1Path[0] };
+                        carAngle = 0;
+                        animateCar();
                     } else {
                         playSound('alarm');
                         resetPlayer2();
                         statusDiv.textContent = 'Pelaaja 2: Saavutit maalin liian aikaisin! Aloita uudelleen alusta.';
                     }
-
                 } else {
                     playSound('alarm');
                     resetPlayer2();
-                     statusDiv.textContent = 'Pelaaja 2: Piirtäminen keskeytyi! Aloita uudelleen alusta.';
+                    statusDiv.textContent = 'Pelaaja 2: Piirtäminen keskeytyi! Aloita uudelleen alusta.';
                 }
             }
         }
