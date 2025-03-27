@@ -17,6 +17,7 @@
             border-radius: 5px;
             display: flex;
             align-items: center;
+            gap: 10px;
         }
         #doneButton, #resetButton {
             padding: 8px 15px;
@@ -36,12 +37,29 @@
             font-weight: bold;
             color: #333;
         }
+        .width-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #widthSlider {
+            width: 100px;
+        }
+        #widthValue {
+            min-width: 40px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
     <div id="controls">
         <button id="doneButton">Valmis!</button>
         <button id="resetButton" style="display: none;">Uusi Peli</button>
+        <div class="width-control">
+            <label for="widthSlider">Polun leveys:</label>
+            <input type="range" id="widthSlider" min="20" max="60" value="40">
+            <span id="widthValue">40</span>
+        </div>
         <div id="status">Pelaaja 1: Piirrä polku.</div>
     </div>
     <canvas id="gameCanvas"></canvas>
@@ -55,7 +73,7 @@
 
         // --- Constants ---
         const P1_COLOR = 'lightblue';
-        const P1_WIDTH = 40;
+        let P1_WIDTH = 40;
         const P2_COLOR = 'black';
         const P2_WIDTH = 3;
         const START_COLOR = 'gray';
@@ -529,6 +547,17 @@
 
         doneButton.addEventListener('click', handleP1Done);
         resetButton.addEventListener('click', resetGame);
+
+        // Add width slider event listener
+        const widthSlider = document.getElementById('widthSlider');
+        const widthValue = document.getElementById('widthValue');
+        widthSlider.addEventListener('input', (e) => {
+            P1_WIDTH = parseInt(e.target.value);
+            widthValue.textContent = P1_WIDTH;
+            if (gameState === 'P1_DRAWING' && player1Path.length > 0) {
+                redrawAll();
+            }
+        });
 
         window.addEventListener('resize', resizeCanvas);
 
