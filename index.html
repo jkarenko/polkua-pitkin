@@ -618,7 +618,7 @@
             // Get points ahead of current position
             for (let i = 0; i < lookAheadPoints; i++) {
                 const aheadProgress = Math.min(1, carProgress + (i + 1) * 0.02);
-                const aheadPoint = getPointAlongPath(aheadProgress, player1Path);
+                const aheadPoint = getPointAlongPath(aheadProgress, player2Path);
                 if (aheadPoint) {
                     avgDirection.x += aheadPoint.x - position.x;
                     avgDirection.y += aheadPoint.y - position.y;
@@ -833,7 +833,7 @@
             if (path.length < 2) return path[0];
             
             // Use smoothed path for car movement
-            const targetPath = path === player1Path ? smoothedPath : path;
+            const targetPath = path === player2Path ? smoothedPath : path;
             if (!targetPath || targetPath.length < 2) return path[0];
             
             let accumulatedLength = 0;
@@ -855,7 +855,7 @@
             if (path.length < 2) return { x: 0, y: 0 };
             
             // Use smoothed path for car movement
-            const targetPath = path === player1Path ? smoothedPath : path;
+            const targetPath = path === player2Path ? smoothedPath : path;
             if (!targetPath || targetPath.length < 2) return { x: 0, y: 0 };
             
             let accumulatedLength = 0;
@@ -897,9 +897,9 @@
             }
 
             // Calculate current and upcoming curvature
-            const currentCurvature = calculateCurvature(carProgress, player1Path);
+            const currentCurvature = calculateCurvature(carProgress, player2Path);
             const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
-            const upcomingCurvature = calculateCurvature(upcomingProgress, player1Path);
+            const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path);
 
             // Calculate target speed based on current curvature
             const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
@@ -928,15 +928,15 @@
             }
 
             // Calculate the next position based on current speed
-            const currentPos = getPointAlongPath(carProgress, player1Path);
+            const currentPos = getPointAlongPath(carProgress, player2Path);
             const nextProgress = carProgress + (currentSpeed / player1TotalLength);
-            const nextPos = getPointAlongPath(nextProgress, player1Path);
+            const nextPos = getPointAlongPath(nextProgress, player2Path);
             
             // Update car position and progress
             carPosition = nextPos;
             carProgress = nextProgress;
             
-            const direction = getDirectionAlongPath(carProgress, player1Path);
+            const direction = getDirectionAlongPath(carProgress, player2Path);
             const targetCarAngle = Math.atan2(direction.y, direction.x);
             
             // Calculate angle change
@@ -1139,8 +1139,10 @@
                         
                         // Reset car state and start animation
                         carProgress = 0;
-                        carPosition = { ...player1Path[0] };
+                        carPosition = { ...player2Path[0] };
                         carAngle = 0;
+                        // Create smoothed path for car to follow
+                        smoothedPath = smoothPath(player2Path);
                         animateCar();
                     } else {
                         playSound('alarm');
