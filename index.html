@@ -82,6 +82,9 @@
         const HIT_THRESHOLD_FACTOR = 1.1; // Tolerance multiplier for staying within P1 trace
         const PROGRESS_INTERVAL = 0.10; // 10%
         const START_END_SNAP_RADIUS_FACTOR = 1.5; // Multiplier for start/end circle click radius
+        const SCORE_THRESHOLD = 20; // Maximum distance for perfect score
+        const SCORE_POINTS = 100; // Maximum points possible
+        const MAX_PATH_LENGTH_FACTOR = 1.10; // Maximum allowed path length as a factor of P1's path
 
         // Car constants
         const CAR_WIDTH = 50;
@@ -114,6 +117,8 @@
         let hasInteracted = false; // For resuming audio context
         let currentActiveSegmentIndex = 0; // Add this to the state variables at the top
         let progressMarkers = []; // Array to store progress milestone points with their directions
+        let maxAllowedPathLength = 0; // Maximum allowed path length for P2
+        let currentPathLength = 0; // Current path length for P2
 
         // Car state
         let carProgress = 0;
@@ -127,6 +132,7 @@
         const WHEEL_TURN_SPEED = 0.15; // Controls how quickly wheels turn (0-1)
         const CAR_TURN_SPEED = 0.1; // Controls how quickly car body turns (0-1)
         const INITIAL_SPEED = 0; // Start from rest
+        const MAX_WHEEL_ANGLE = Math.PI / 4; // Maximum wheel turn angle (45 degrees)
 
         // Add new state variables for sound management
         let engineSound = null;
@@ -639,11 +645,17 @@
             // Calculate target wheel angle based on average direction
             const targetWheelAngle = Math.atan2(avgDirection.y, avgDirection.x) - angle;
             
+            // Clamp the target wheel angle to ±45 degrees
+            const clampedTargetWheelAngle = Math.max(-MAX_WHEEL_ANGLE, Math.min(MAX_WHEEL_ANGLE, targetWheelAngle));
+            
             // Smoothly interpolate current wheel angle towards target
-            const angleDiff = targetWheelAngle - currentWheelAngle;
+            const angleDiff = clampedTargetWheelAngle - currentWheelAngle;
             // Normalize angle difference to [-PI, PI]
             const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
             currentWheelAngle += normalizedDiff * WHEEL_TURN_SPEED;
+            
+            // Clamp the final wheel angle to ensure it stays within limits
+            currentWheelAngle = Math.max(-MAX_WHEEL_ANGLE, Math.min(MAX_WHEEL_ANGLE, currentWheelAngle));
             
             // Draw wheels with rotation
             ctx.save();
@@ -786,6 +798,8 @@
              statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
 
             player1TotalLength = calculatePathLength(player1Path);
+            maxAllowedPathLength = player1TotalLength * MAX_PATH_LENGTH_FACTOR;
+            currentPathLength = 0;
             const markerRadius = P1_WIDTH / 2 * MARKER_RADIUS_FACTOR;
              startMarker = { ...player1Path[0], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
              endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
@@ -880,8 +894,69 @@
             return { x: 0, y: 0 };
         }
 
+        function drawVictoryScreen(score) {
+            // Draw semi-transparent black overlay
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw victory message
+            ctx.save();
+            ctx.fillStyle = '#4CAF50';
+            ctx.font = 'bold 48px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Add text shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            
+            // Draw main message
+            ctx.fillText('Pääsit Maaliin!', canvas.width/2, canvas.height/2 - 60);
+            
+            // Draw score
+            ctx.font = 'bold 36px sans-serif';
+            ctx.fillText(`Pisteet: ${score}`, canvas.width/2, canvas.height/2);
+            
+            // Draw score message
+            ctx.font = '24px sans-serif';
+            ctx.fillText(getScoreMessage(score), canvas.width/2, canvas.height/2 + 40);
+            
+            // Draw submessage
+            ctx.fillText('Aloita uusi peli', canvas.width/2, canvas.height/2 + 80);
+            
+            // Reset shadow
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            
+            ctx.restore();
+        }
+
         function animateCar() {
             if (carProgress >= 1) {
+                // Check if we've exceeded the fuel limit
+                if (currentPathLength > maxAllowedPathLength) {
+                    gameState = 'P2_FINISHED';
+                    if (carAnimationFrame) {
+                        cancelAnimationFrame(carAnimationFrame);
+                    }
+                    // Stop engine sound immediately
+                    if (engineSound) {
+                        engineSound.mainOsc.stop();
+                        engineSound.varOsc.stop();
+                        engineSound = null;
+                    }
+                    // Play a failure sound
+                    playSound('alarm');
+                    playSound('alarm'); // Play twice for emphasis
+                    statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Aloita uudelleen alusta.';
+                    redrawAll(); // Redraw to show fail state
+                    return;
+                }
+
                 gameState = 'P2_FINISHED';
                 if (carAnimationFrame) {
                     cancelAnimationFrame(carAnimationFrame);
@@ -894,6 +969,11 @@
                 }
                 // Play a victory honk pattern: short-short-long
                 playHonk([0.1, 0.6], [0.1]);
+                
+                // Calculate and display score
+                const score = calculateScore();
+                statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
+                redrawAll(); // Redraw to show victory screen
                 return;
             }
 
@@ -984,6 +1064,113 @@
             carAnimationFrame = requestAnimationFrame(animateCar);
         }
 
+        function drawFuelGauge() {
+            if (gameState !== 'P2_DRAWING' && gameState !== 'CAR_ANIMATING') return;
+            
+            const gaugeWidth = 200;
+            const gaugeHeight = 30;
+            const x = canvas.width - gaugeWidth - 20;
+            const y = 20;
+            
+            // Draw gauge background with rounded corners
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(x, y, gaugeWidth, gaugeHeight, 5);
+            ctx.fillStyle = '#ddd';
+            ctx.fill();
+            
+            // Calculate remaining fuel percentage
+            let remainingFuel;
+            if (gameState === 'CAR_ANIMATING') {
+                // During car animation, start at 100% and decrease to final amount
+                const finalFuel = 1 - (currentPathLength / maxAllowedPathLength);
+                // Interpolate between 1 (100%) and finalFuel based on car progress
+                remainingFuel = 1 - (carProgress * (1 - finalFuel));
+            } else {
+                // During drawing, fuel decreases based on path length
+                remainingFuel = Math.max(0, 1 - (currentPathLength / maxAllowedPathLength));
+            }
+            
+            // Draw fuel level with gradient
+            const gradient = ctx.createLinearGradient(x, y, x + gaugeWidth, y);
+            if (remainingFuel > 0.3) {
+                gradient.addColorStop(0, '#4CAF50');
+                gradient.addColorStop(1, '#45a049');
+            } else if (remainingFuel > 0.1) {
+                gradient.addColorStop(0, '#FFA500');
+                gradient.addColorStop(1, '#FF8C00');
+            } else {
+                gradient.addColorStop(0, '#FF4444');
+                gradient.addColorStop(1, '#CC0000');
+            }
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.roundRect(x, y, gaugeWidth * remainingFuel, gaugeHeight, 5);
+            ctx.fill();
+            
+            // Draw gauge border
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw fuel text with shadow
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Add text shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+            ctx.shadowBlur = 2;
+            ctx.shadowOffsetX = 1;
+            ctx.shadowOffsetY = 1;
+            
+            ctx.fillText(`Polttoaine: ${Math.round(remainingFuel * 100)}%`, x + gaugeWidth/2, y + gaugeHeight/2);
+            
+            // Reset shadow
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            
+            ctx.restore();
+        }
+
+        function drawFailState() {
+            // Draw semi-transparent black overlay
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw fail message
+            ctx.save();
+            ctx.fillStyle = '#FF4444';
+            ctx.font = 'bold 48px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Add text shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            
+            // Draw main message
+            ctx.fillText('POLTTOAINE LOPPUI!', canvas.width/2, canvas.height/2 - 40);
+            
+            // Draw submessage
+            ctx.font = '24px sans-serif';
+            ctx.fillText('Aloita uudelleen alusta', canvas.width/2, canvas.height/2 + 20);
+            
+            // Reset shadow
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            
+            ctx.restore();
+        }
+
         function redrawAll() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1006,6 +1193,35 @@
             if (gameState === 'P2_DRAWING' || gameState === 'P2_WAITING') {
                 drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
             }
+
+            // Draw the car trail if it exists
+            if (carTrail.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(carTrail[0].x, carTrail[0].y);
+                for (let i = 1; i < carTrail.length; i++) {
+                    ctx.lineTo(carTrail[i].x, carTrail[i].y);
+                }
+                ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; // Semi-transparent red
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+            }
+
+            // Draw the car if it exists
+            if (carPosition) {
+                drawCar(carPosition, currentCarAngle);
+            }
+            
+            // Draw fail state if fuel ran out
+            if (gameState === 'P2_FINISHED' && currentPathLength > maxAllowedPathLength) {
+                drawFailState();
+            } else if (gameState === 'P2_FINISHED' && currentPathLength <= maxAllowedPathLength) {
+                drawVictoryScreen(calculateScore());
+            }
+
+            // Draw fuel gauge last so it's always on top
+            drawFuelGauge();
         }
 
         // --- Game Logic ---
@@ -1014,6 +1230,7 @@
             isDrawing = false;
             lastPlayedProgressMilestone = 0;
             currentActiveSegmentIndex = 0; // Reset the active segment index
+            currentPathLength = 0; // Reset path length
             gameState = 'P2_WAITING';
             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
             redrawAll();
@@ -1031,6 +1248,8 @@
             endMarker = null;
             progressMarkers = []; // Clear progress markers
             carTrail = []; // Clear car trail
+            currentPathLength = 0; // Reset path length
+            maxAllowedPathLength = 0; // Reset max allowed path length
             doneButton.style.display = 'inline-block';
             resetButton.style.display = 'none';
             statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
@@ -1109,7 +1328,11 @@
                     resetPlayer2();
                     statusDiv.textContent = 'Pelaaja 2: Hups! Eksyit polulta! Aloita uudelleen alusta.';
                 } else {
+                    // Calculate new path length
+                    const newSegmentLength = dist(lastPos, pos);
+                    currentPathLength += newSegmentLength;
                     player2Path.push(pos);
+                    
                     ctx.beginPath();
                     ctx.moveTo(lastPos.x, lastPos.y);
                     ctx.lineTo(pos.x, pos.y);
@@ -1150,7 +1373,7 @@
                     const finalProgress = getProgressAlongPath(lastPos, player1Path);
                     if (finalProgress >= 0.95) {
                         gameState = 'CAR_ANIMATING';
-                        statusDiv.textContent = 'Pelaaja 2 Voitti! Hienosti piirretty! 🎉';
+                        statusDiv.textContent = 'Pelaaja 2: Polku valmis! Odota autoa...';
                         playSound('success');
                         redrawAll();
                         drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
@@ -1175,6 +1398,51 @@
             }
         }
 
+        function calculateScore() {
+            if (player2Path.length < 2) return 0;
+            
+            let totalDistance = 0;
+            let validPoints = 0;
+            
+            // Sample points along Player 2's path
+            for (let i = 0; i < player2Path.length; i++) {
+                const point = player2Path[i];
+                let minDistance = Infinity;
+                
+                // Find the closest point on Player 1's path
+                for (let j = 0; j < player1Path.length - 1; j++) {
+                    const dist = pointLineSegmentDistance(point, player1Path[j], player1Path[j + 1]);
+                    minDistance = Math.min(minDistance, dist);
+                }
+                
+                // Only count points that are within the threshold
+                if (minDistance <= SCORE_THRESHOLD) {
+                    totalDistance += minDistance;
+                    validPoints++;
+                }
+            }
+            
+            if (validPoints === 0) return 0;
+            
+            // Calculate average distance
+            const avgDistance = totalDistance / validPoints;
+            
+            // Convert to score (0-100)
+            // Perfect score (100) when average distance is 0
+            // 0 points when average distance is SCORE_THRESHOLD or greater
+            const score = Math.max(0, Math.round(SCORE_POINTS * (1 - avgDistance / SCORE_THRESHOLD)));
+            
+            return score;
+        }
+
+        function getScoreMessage(score) {
+            if (score >= 90) return "Vau! Upea suoritus! 🏆";
+            if (score >= 80) return "Ajoit varsin hienosti! 🌟";
+            if (score >= 70) return "Hyvä! Pysyit tiellä! 👍";
+            if (score >= 60) return "Pystyt parempaankin! 🙂";
+            if (score >= 50) return "Nyt meni vähän mutkitellen! 🤔";
+            return "Kokeile uudelleen! 💪";
+        }
 
         // --- Initialization ---
         function resizeCanvas() {
