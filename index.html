@@ -166,7 +166,7 @@
     <canvas id="gameCanvas"></canvas>
 
     <script type="module">
-        import { drawCar, CAR_CONSTANTS } from './src/car.js';
+        import { drawCar, CAR_CONSTANTS, createCar } from './src/car.js';
         import { playSound, playHonk, setHasInteracted } from './src/audio.js';
         
         const canvas = document.getElementById('gameCanvas');
@@ -236,6 +236,7 @@
         let carTrail = [];
         let engineSound = null;
         let lastAngleChange = 0;
+        let carConfig = null;  // Add car configuration state
         const TURN_THRESHOLD = 0.5;
         const SOUND_COOLDOWN = 500;
 
@@ -774,7 +775,7 @@
                 }
 
                 if (carPosition) {
-                    drawCar(ctx, carPosition, currentCarAngle, currentWheelAngle);
+                    drawCar(ctx, carPosition, currentCarAngle, currentWheelAngle, carConfig || { color: '#FF4444' });
                 }
             }
 
@@ -814,6 +815,7 @@
             fuelConsumed = 0; // Reset fuel consumed
             previousCarPosition = null; // Reset previous car position tracking
             defeatFlagged = false; // Reset defeat flag
+            carConfig = null; // Reset car configuration
             doneButton.style.display = 'inline-block';
             resetButton.style.display = 'none';
             statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
@@ -952,6 +954,7 @@
                         carProgress = 0;
                         carPosition = { ...player2Path[0] };
                         carAngle = 0;
+                        carConfig = createCar(); // Create new car configuration with random color
                         // Create smoothed path for car to follow
                         smoothedPath = smoothPath(player2Path);
                         animateCar();
@@ -1090,6 +1093,7 @@
             fuelConsumed = 0; // Reset fuel consumed for replay
             previousCarPosition = null; // Reset previous car position tracking
             defeatFlagged = false; // Reset defeat flag
+            carConfig = null; // Reset car configuration
             gameState = 'P2_WAITING';
             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
             

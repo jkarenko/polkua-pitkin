@@ -1,7 +1,26 @@
 // Car constants
 const CAR_WIDTH = 50;
 const CAR_HEIGHT = 20;
-const CAR_COLOR = '#FF4444';
+
+// Function to generate a random color
+function getRandomColor() {
+    const letters = '0123456789ABCDEF';
+    let color = '#';
+    for (let i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+}
+
+/**
+ * Creates a new car configuration with a random color
+ * @returns {Object} Car configuration object with a random color
+ */
+export function createCar() {
+    return {
+        color: getRandomColor()
+    };
+}
 
 /**
  * Draws a car at the specified position and angle
@@ -9,8 +28,9 @@ const CAR_COLOR = '#FF4444';
  * @param {Object} position - The position of the car {x, y}
  * @param {number} angle - The angle of the car in radians
  * @param {number} wheelAngle - The current wheel angle in radians
+ * @param {Object} carConfig - The car configuration object containing the color
  */
-export function drawCar(ctx, position, angle, wheelAngle) {
+export function drawCar(ctx, position, angle, wheelAngle, carConfig) {
     ctx.save();
     ctx.translate(position.x, position.y);
     ctx.rotate(angle);
@@ -19,7 +39,7 @@ export function drawCar(ctx, position, angle, wheelAngle) {
     drawWheels(ctx, wheelAngle);
 
     // Draw car body
-    drawCarBody(ctx);
+    drawCarBody(ctx, carConfig.color);
 
     // Draw car roof
     drawCarRoof(ctx);
@@ -55,8 +75,8 @@ function drawWheels(ctx, wheelAngle) {
     ctx.fillRect(-CAR_WIDTH / 2 + 8, CAR_HEIGHT / 2 - 1, 10, 2);
 }
 
-function drawCarBody(ctx) {
-    ctx.fillStyle = CAR_COLOR;
+function drawCarBody(ctx, color) {
+    ctx.fillStyle = color;
     ctx.fillRect(-CAR_WIDTH / 2, -CAR_HEIGHT / 2, CAR_WIDTH, CAR_HEIGHT);
 }
 
@@ -126,6 +146,5 @@ function drawHeadlights(ctx) {
 // Export constants that might be needed by other modules
 export const CAR_CONSTANTS = {
     WIDTH: CAR_WIDTH,
-    HEIGHT: CAR_HEIGHT,
-    COLOR: CAR_COLOR
+    HEIGHT: CAR_HEIGHT
 }; 
