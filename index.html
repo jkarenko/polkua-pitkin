@@ -165,7 +165,9 @@
     
     <canvas id="gameCanvas"></canvas>
 
-    <script>
+    <script type="module">
+        import { drawCar, CAR_CONSTANTS } from './src/car.js';
+        
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const doneButton = document.getElementById('doneButton');
@@ -179,30 +181,27 @@
         const P2_WIDTH = 3;
         const START_COLOR = 'gray';
         const END_COLOR = 'green';
-        const MARKER_RADIUS_FACTOR = 1.4; // Circle radius = line width * factor
-        const HIT_THRESHOLD_FACTOR = 1.1; // Tolerance multiplier for staying within P1 trace
-        const PROGRESS_INTERVAL = 0.10; // 10%
-        const START_END_SNAP_RADIUS_FACTOR = 1.5; // Multiplier for start/end circle click radius
-        const SCORE_THRESHOLD = 20; // Maximum distance for perfect score
-        const SCORE_POINTS = 100; // Maximum points possible
-        const MAX_PATH_LENGTH_FACTOR = 1.10; // Maximum allowed path length as a factor of P1's path
+        const MARKER_RADIUS_FACTOR = 1.4;
+        const HIT_THRESHOLD_FACTOR = 1.1;
+        const PROGRESS_INTERVAL = 0.10;
+        const START_END_SNAP_RADIUS_FACTOR = 1.5;
+        const SCORE_THRESHOLD = 20;
+        const SCORE_POINTS = 100;
+        const MAX_PATH_LENGTH_FACTOR = 1.10;
 
         // Car constants
-        const CAR_WIDTH = 50;
-        const CAR_HEIGHT = 20;
-        const CAR_COLOR = '#FF4444';
-        const CAR_PIXEL_SPEED = 2; // Base speed in pixels per frame
-        const CAR_ANIMATION_INTERVAL = 16; // ~60fps
-        const SMOOTHING_WINDOW = 10; // Number of points to use for smoothing
-        const CURVATURE_WINDOW = 10; // Number of points to use for curvature calculation
-        const MAX_CURVATURE = 0.9; // Maximum curvature value (1.0 would be a complete U-turn)
-        const ACCELERATION_RATE = 0.005; // How quickly the car speeds up (0-1 per frame)
-        const BASE_DECELERATION_RATE = 0.8; // Base deceleration rate (increased from 0.5)
-        const CURVE_LOOK_AHEAD = 0.15; // How far ahead to look for curves (15% of path)
-        const MAX_DECELERATION_RATE = 1.2; // Maximum deceleration rate when approaching sharp curves (increased from 0.8)
-        const CURVE_PREPARATION_DISTANCE = 0.1; // How far before a curve to start preparing (10% of path)
-        const FINISH_PREPARATION_DISTANCE = 0.2; // How far before finish to start slowing down (20% of path)
-        const MIN_FINISH_SPEED = 0.3; // Minimum speed at finish line (30% of max speed)
+        const CAR_PIXEL_SPEED = 2;
+        const CAR_ANIMATION_INTERVAL = 16;
+        const SMOOTHING_WINDOW = 10;
+        const CURVATURE_WINDOW = 10;
+        const MAX_CURVATURE = 0.9;
+        const ACCELERATION_RATE = 0.005;
+        const BASE_DECELERATION_RATE = 0.8;
+        const CURVE_LOOK_AHEAD = 0.15;
+        const MAX_DECELERATION_RATE = 1.2;
+        const CURVE_PREPARATION_DISTANCE = 0.1;
+        const FINISH_PREPARATION_DISTANCE = 0.2;
+        const MIN_FINISH_SPEED = 0.3;
 
         // --- State ---
         let gameState = 'P1_DRAWING'; // 'P1_DRAWING', 'P2_WAITING', 'P2_DRAWING', 'P2_FINISHED', 'CAR_ANIMATING'
@@ -716,147 +715,6 @@
             ctx.restore();
         }
 
-        function drawCar(position, angle) {
-            ctx.save();
-            ctx.translate(position.x, position.y);
-            ctx.rotate(angle);
-            
-            // Calculate average direction vector for front wheels
-            const lookAheadPoints = 5; // Number of points to look ahead
-            let avgDirection = { x: 0, y: 0 };
-            let count = 0;
-            
-            // Get points ahead of current position
-            for (let i = 0; i < lookAheadPoints; i++) {
-                const aheadProgress = Math.min(1, carProgress + (i + 1) * 0.02);
-                const aheadPoint = getPointAlongPath(aheadProgress, player2Path);
-                if (aheadPoint) {
-                    avgDirection.x += aheadPoint.x - position.x;
-                    avgDirection.y += aheadPoint.y - position.y;
-                    count++;
-                }
-            }
-            
-            // Normalize average direction
-            if (count > 0) {
-                const length = Math.sqrt(avgDirection.x * avgDirection.x + avgDirection.y * avgDirection.y);
-                if (length > 0) {
-                    avgDirection.x /= length;
-                    avgDirection.y /= length;
-                }
-            }
-            
-            // Calculate target wheel angle based on average direction
-            const targetWheelAngle = Math.atan2(avgDirection.y, avgDirection.x) - angle;
-            
-            // Clamp the target wheel angle to ±45 degrees
-            const clampedTargetWheelAngle = Math.max(-MAX_WHEEL_ANGLE, Math.min(MAX_WHEEL_ANGLE, targetWheelAngle));
-            
-            // Smoothly interpolate current wheel angle towards target
-            const angleDiff = clampedTargetWheelAngle - currentWheelAngle;
-            // Normalize angle difference to [-PI, PI]
-            const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
-            currentWheelAngle += normalizedDiff * WHEEL_TURN_SPEED;
-            
-            // Clamp the final wheel angle to ensure it stays within limits
-            currentWheelAngle = Math.max(-MAX_WHEEL_ANGLE, Math.min(MAX_WHEEL_ANGLE, currentWheelAngle));
-            
-            // Draw wheels with rotation
-            ctx.save();
-            ctx.translate(CAR_WIDTH/2 - 10, -CAR_HEIGHT/2);
-            ctx.rotate(currentWheelAngle);
-            ctx.fillStyle = '#000';
-            ctx.fillRect(-5, -1, 10, 2);
-            ctx.restore();
-            
-            ctx.save();
-            ctx.translate(CAR_WIDTH/2 - 10, CAR_HEIGHT/2);
-            ctx.rotate(currentWheelAngle);
-            ctx.fillStyle = '#000';
-            ctx.fillRect(-5, -1, 10, 2);
-            ctx.restore();
-            
-            // Draw rear wheels (static)
-            ctx.fillStyle = '#000';
-            ctx.fillRect(-CAR_WIDTH/2 + 8, -CAR_HEIGHT/2 - 1, 10, 2);
-            ctx.fillRect(-CAR_WIDTH/2 + 8, CAR_HEIGHT/2 - 1, 10, 2);
-            
-            // Draw car body
-            ctx.fillStyle = CAR_COLOR;
-            ctx.fillRect(-CAR_WIDTH/2, -CAR_HEIGHT/2, CAR_WIDTH, CAR_HEIGHT);
-
-            // Draw car roof with multiply blend mode for realistic darkening
-            ctx.globalCompositeOperation = 'multiply';
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';  // Use black with 30% opacity
-            ctx.fillRect(-CAR_WIDTH/4, -CAR_HEIGHT/2, CAR_WIDTH/2, CAR_HEIGHT);
-            ctx.globalCompositeOperation = 'source-over';  // Reset to default blend mode
-
-            // Draw windows (in top-down perspective)
-            ctx.fillStyle = '#4a90e2';  // Light blue color for windows
-            // Rear windshield
-            ctx.beginPath();
-            ctx.moveTo(-CAR_WIDTH/4, -CAR_HEIGHT/2 + 3);
-            ctx.lineTo(-CAR_WIDTH/4, CAR_HEIGHT/2 - 3);
-            ctx.lineTo(-CAR_WIDTH/2 + 4, CAR_HEIGHT/2);
-            ctx.lineTo(-CAR_WIDTH/2 + 4, -CAR_HEIGHT/2);
-            ctx.closePath();
-            ctx.fill();
-            
-            // Front windshield
-            ctx.beginPath();
-            ctx.moveTo(CAR_WIDTH/4, -CAR_HEIGHT/2);
-            ctx.lineTo(CAR_WIDTH/4, CAR_HEIGHT/2);
-            ctx.lineTo(CAR_WIDTH/4 - 3, CAR_HEIGHT/2 - 5);
-            ctx.lineTo(CAR_WIDTH/4 - 3, -CAR_HEIGHT/2 + 5);
-            ctx.closePath();
-            ctx.fill();
-
-            // Side windows - Left side
-            // Front door window
-            ctx.beginPath();
-            ctx.moveTo(-CAR_WIDTH/4, -CAR_HEIGHT/2);
-            ctx.lineTo(0, -CAR_HEIGHT/2);
-            ctx.lineTo(0 - 3, -CAR_HEIGHT/2 + 3);
-            ctx.lineTo(-CAR_WIDTH/4 + 3, -CAR_HEIGHT/2 + 3);
-            ctx.closePath();
-            ctx.fill();
-
-            // Back door window
-            ctx.beginPath();
-            ctx.moveTo(0, -CAR_HEIGHT/2);
-            ctx.lineTo(CAR_WIDTH/4, -CAR_HEIGHT/2);
-            ctx.lineTo(CAR_WIDTH/4 - 3, -CAR_HEIGHT/2 + 3);
-            ctx.lineTo(0 - 3, -CAR_HEIGHT/2 + 3);
-            ctx.closePath();
-            ctx.fill();
-
-            // Side windows - Right side
-            // Front door window
-            ctx.beginPath();
-            ctx.moveTo(-CAR_WIDTH/4, CAR_HEIGHT/2);
-            ctx.lineTo(0, CAR_HEIGHT/2);
-            ctx.lineTo(0 - 3, CAR_HEIGHT/2 - 3);
-            ctx.lineTo(-CAR_WIDTH/4 + 3, CAR_HEIGHT/2 - 3);
-            ctx.closePath();
-            ctx.fill();
-
-            // Back door window
-            ctx.beginPath();
-            ctx.moveTo(0, CAR_HEIGHT/2);
-            ctx.lineTo(CAR_WIDTH/4, CAR_HEIGHT/2);
-            ctx.lineTo(CAR_WIDTH/4 - 3, CAR_HEIGHT/2 - 3);
-            ctx.lineTo(0 - 3, CAR_HEIGHT/2 - 3);
-            ctx.closePath();
-            ctx.fill();
-
-            // Draw headlights
-            ctx.fillStyle = '#FFF';
-            ctx.fillRect(CAR_WIDTH/2 - 2, -CAR_HEIGHT/2 + 1, 3, 5);    // Left headlight
-            ctx.fillRect(CAR_WIDTH/2 - 2, CAR_HEIGHT/2 - 6, 3, 5);  // Right headlight
-
-            ctx.restore();
-        }
-
         function smoothPath(path) {
             if (path.length < 3) return path;
             
@@ -1094,40 +952,34 @@
                 drawCircle(endMarker, endMarker.radius, END_COLOR);
                 drawPath(player1Path, P1_COLOR, P1_WIDTH, false);
                 
-                // Draw progress markers, skipping the first and last markers
                 progressMarkers.slice(1, -1).forEach(marker => {
                     drawDirectionalMarker(marker.point, marker.direction);
                 });
             } else if (player1Path.length > 0) {
-                // Draw P1 path with isDrawing flag based on game state
                 drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === 'P1_DRAWING');
             }
 
-            // Draw Player 2 path if they are drawing or failed
             if (gameState === 'P2_DRAWING' || gameState === 'P2_WAITING') {
                 drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
             }
 
-            // Draw the car trail if it exists
             if (carTrail.length > 1) {
                 ctx.beginPath();
                 ctx.moveTo(carTrail[0].x, carTrail[0].y);
                 for (let i = 1; i < carTrail.length; i++) {
                     ctx.lineTo(carTrail[i].x, carTrail[i].y);
                 }
-                ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; // Semi-transparent red
+                ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)';
                 ctx.lineWidth = 3;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
                 ctx.stroke();
             }
 
-            // Draw the car if it exists
             if (carPosition) {
-                drawCar(carPosition, currentCarAngle);
+                drawCar(ctx, carPosition, currentCarAngle, currentWheelAngle);
             }
 
-            // Draw fuel gauge last so it's always on top
             drawFuelGauge();
         }
 
