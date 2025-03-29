@@ -2218,7 +2218,12 @@
             previousCarPosition = null;
             defeatFlagged = false;
             carConfig = null;
-            decorations = [];
+            
+            // Generate decorations for the loaded path
+            const decorationDensity = 5; // Same density as when P1 finishes drawing
+            const decorationOffset = P1_WIDTH * 1.5; // Same offset as when P1 finishes
+            decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
+            
             tireMarks = [];
 
             // IMPORTANT: Set the session high score from the loaded course
