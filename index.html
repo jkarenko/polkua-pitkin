@@ -75,6 +75,7 @@
             padding: 20px;
             box-sizing: border-box;
             text-align: center;
+            pointer-events: none; /* Allow clicks to pass through to canvas */
         }
         
         .game-screen h1 {
@@ -108,6 +109,7 @@
         .game-screen-buttons {
             display: flex;
             gap: 20px;
+            pointer-events: auto; /* Re-enable clicks for buttons */
         }
         
         .game-button {
@@ -319,6 +321,7 @@
         import { drawCar, CAR_CONSTANTS, createCar } from './src/car.js';
         import { playSound, playHonk, setHasInteracted } from './src/audio.js';
         import { generateDecorationsForPath } from './src/decoration.js';
+        import { createCrashEffect, createVictoryCelebration, updateAndDrawParticles } from './src/effects.js';
         
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -391,6 +394,7 @@
         let currentSessionBestPlayer2Path = [];
         let draggedCourseId = null; // Track the ID of the course being dragged
         let isFinishing = false; // Flag for the 1-second delay at the finish
+        let activeParticles = []; // Array to store active emoji particles
 
         // Car state
         let carProgress = 0;
@@ -408,6 +412,9 @@
         let isScreeching = false; // <--- Add state for current screech status
         const TURN_THRESHOLD = 0.5;
         const SOUND_COOLDOWN = 500; // We might not need SOUND_COOLDOWN anymore
+
+        // Add this after the other animation frame variables
+        let particleAnimationFrame = null;
 
         // --- Helper Functions ---
         function getEventCoords(e) {
@@ -909,64 +916,25 @@
 
             // Store the high score *before* this run
             const previousSessionHighScore = currentSessionHighScore;
-            let newRecordSet = false; // Reset flag
+            let newRecordSet = false;
 
             // Update session high score if this run was better *for the session*
             if (score > currentSessionHighScore) {
                 currentSessionHighScore = score;
                 currentSessionBestPlayer2Path = [...player2Path];
                 console.log(`New session high score for this path: ${currentSessionHighScore}`);
-                // Check if this new session high score is genuinely better than the previous one
                 if (score > previousSessionHighScore) {
-                     newRecordSet = true; // A new best score *for this session* was set
+                    newRecordSet = true;
                 }
             }
-
 
             // Update display content
             scoreDisplay.textContent = `Pisteet: ${score}`;
             scoreMessage.textContent = getScoreMessage(score);
-            newRecordMsg.style.display = 'none'; // Hide message initially
-            saveButton.style.display = 'none'; // Hide save button initially
+            newRecordMsg.style.display = newRecordSet ? 'block' : 'none';
+            saveButton.style.display = 'none';
 
-            // Check localStorage for existing course and handle auto-update/button visibility
-            try {
-                const courseId = hashPath(smoothedPath);
-                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-                const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
-
-                if (existingCourseIndex !== -1) {
-                    // Course exists
-                    const existingCourse = savedCourses[existingCourseIndex];
-                    if (currentSessionHighScore > existingCourse.highScore) {
-                        // --- Auto-update high score in localStorage ---
-                        existingCourse.highScore = currentSessionHighScore;
-                        existingCourse.highScorePlayer2Path = currentSessionBestPlayer2Path;
-                        savedCourses[existingCourseIndex] = existingCourse;
-                        localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
-                        console.log(`Course high score automatically updated in storage: ${existingCourse.name} to ${currentSessionHighScore}`);
-                        // Ensure the flag is set if we beat a saved score, even if it wasn't higher than the absolute previous score somehow
-                        // (e.g., if localStorage was out of sync - defensive check)
-                        newRecordSet = true;
-                    }
-                     // Button remains hidden as course is saved
-                } else {
-                    // Course does not exist yet - SHOW manual save button
-                    saveButton.textContent = 'Tallenna rata';
-                    saveButton.disabled = false;
-                    saveButton.style.display = 'inline-block';
-                }
-            } catch (error) {
-                console.error("Error accessing/updating saved courses:", error);
-                // Button remains hidden on error
-            }
-
-            // Show the "New Record" message if applicable (covers session AND storage records)
-            if (newRecordSet) {
-                newRecordMsg.style.display = 'block';
-            }
-
-            // Display the screen
+            // Show the screen
             victoryScreen.style.display = 'flex';
         }
 
@@ -1195,6 +1163,15 @@
             savedCoursesButton.style.display = 'inline-block'; // Show button in P1 phase
             closeSidebar(); // Ensure sidebar is closed on new game
             hideTrashCan(); // Ensure trashcan is hidden
+            
+            // Clear particles
+            activeParticles = [];
+            
+            // Cancel particle animation if running
+            if (particleAnimationFrame) {
+                cancelAnimationFrame(particleAnimationFrame);
+                particleAnimationFrame = null;
+            }
         }
 
         // --- Event Handlers ---
@@ -1268,6 +1245,12 @@
                     statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
                     playSound('alarm');
                     playSound('alarm');
+                    
+                    // Add crash effect at the current position
+                    activeParticles.push(...createCrashEffect(pos.x, pos.y));
+                    
+                    // Start particle animation immediately
+                    animateParticles();
                     
                     // Add 1-second delay before showing defeat screen
                     setTimeout(() => {
@@ -1513,11 +1496,24 @@
             }
             
             redrawAll();
+            
+            // Clear particles
+            activeParticles = [];
+            
+            // Cancel particle animation if running
+            if (particleAnimationFrame) {
+                cancelAnimationFrame(particleAnimationFrame);
+                particleAnimationFrame = null;
+            }
         }
 
         function animateCar() {
             // Exit if we are already in the finishing delay or showing score
             if (isFinishing || gameState === 'SHOWING_SCORE') {
+                // Start particle animation if not already running
+                if (!particleAnimationFrame && activeParticles.length > 0) {
+                    animateParticles();
+                }
                 return;
             }
 
@@ -1567,6 +1563,14 @@
                 playSound('alarm');
                 playSound('alarm');
                 statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
+                
+                // Add crash effect at the current position
+                activeParticles.push(...createCrashEffect(carPosition.x, carPosition.y));
+                
+                // Start particle animation immediately
+                if (!particleAnimationFrame) {
+                    animateParticles();
+                }
                 
                 // Stop the car immediately
                 if (carAnimationFrame) {
@@ -1674,6 +1678,19 @@
                 // Play honk sound immediately IF NOT defeated
                 if (!defeatFlagged) {
                     playHonk([0.1, 0.6], [0.1]);
+                    
+                    // Calculate score before showing victory screen
+                    const score = calculateScore();
+                    
+                    // Only add victory celebration particles if this is a new high score
+                    if (score > currentSessionHighScore) {
+                        // Add victory celebration particles immediately
+                        activeParticles.push(...createVictoryCelebration(carPosition.x, carPosition.y));
+                        // Start particle animation if not already running
+                        if (!particleAnimationFrame) {
+                            animateParticles();
+                        }
+                    }
                 }
 
                 // Stop engine sound
@@ -2183,6 +2200,23 @@
 
         // Initial setup
         // ...
+
+        // Add new function for particle animation
+        function animateParticles() {
+            // Clear the canvas and redraw everything
+            redrawAll();
+            
+            // Update and draw particles on top
+            updateAndDrawParticles(ctx, activeParticles);
+            
+            // Continue animation if there are particles
+            if (activeParticles.length > 0) {
+                particleAnimationFrame = requestAnimationFrame(animateParticles);
+            } else {
+                // If no particles left, ensure we clean up
+                particleAnimationFrame = null;
+            }
+        }
     </script>
 </body>
 </html>
