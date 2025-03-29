@@ -951,13 +951,17 @@
             const previousSessionHighScore = currentSessionHighScore;
             let newRecordSet = false;
 
-            // Update session high score if this run was better *for the session*
+            // Update session high score if this run was better
             if (score > currentSessionHighScore) {
                 currentSessionHighScore = score;
                 currentSessionBestPlayer2Path = [...player2Path];
-                console.log(`New session high score for this path: ${currentSessionHighScore}`);
+                console.log(`New session high score: ${currentSessionHighScore}`);
                 if (score > previousSessionHighScore) {
                     newRecordSet = true;
+                    // Automatically update highscore if this is a loaded course
+                    if (window.currentLoadedCourseId) {
+                        updateHighScore(window.currentLoadedCourseId, score);
+                    }
                 }
             }
 
@@ -965,10 +969,41 @@
             scoreDisplay.textContent = `Pisteet: ${score}`;
             scoreMessage.textContent = getScoreMessage(score);
             newRecordMsg.style.display = newRecordSet ? 'block' : 'none';
-            saveButton.style.display = 'block'; // Show the save button
+
+            // Only show save button for new courses
+            if (window.currentLoadedCourseId) {
+                saveButton.style.display = 'none';
+            } else {
+                saveButton.style.display = 'block';
+                saveButton.textContent = 'Tallenna rata';
+                saveButton.disabled = false;
+            }
 
             // Show the screen
             victoryScreen.style.display = 'flex';
+        }
+
+        // Add new function to handle highscore updates
+        function updateHighScore(courseId, newScore) {
+            try {
+                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                const courseIndex = savedCourses.findIndex(course => course.id === courseId);
+                
+                if (courseIndex !== -1) {
+                    // Update the existing course with new highscore
+                    savedCourses[courseIndex].highScore = newScore;
+                    savedCourses[courseIndex].highScorePlayer2Path = currentSessionBestPlayer2Path;
+                    localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                    console.log(`Automatically updated highscore for course ${courseId}`);
+                    
+                    // If sidebar is open, refresh it to show updated scores
+                    if (savedCoursesSidebar.classList.contains('visible')) {
+                        populateSavedCoursesSidebar();
+                    }
+                }
+            } catch (error) {
+                console.error("Error updating highscore:", error);
+            }
         }
 
         function drawFailState() {
@@ -1206,6 +1241,8 @@
                 cancelAnimationFrame(particleAnimationFrame);
                 particleAnimationFrame = null;
             }
+            
+            window.currentLoadedCourseId = null; // Clear the loaded course ID
         }
 
         // --- Event Handlers ---
@@ -2200,6 +2237,9 @@
 
             closeSidebar(); // Close sidebar after loading
             statusDiv.textContent = `Ladattu rata: ${courseData.name}. Pelaaja 2: Seuraa polkua.`;
+
+            // Add tracking of loaded course ID
+            window.currentLoadedCourseId = courseData.id;
         }
 
         function deleteCourse(courseId) {
@@ -2414,11 +2454,11 @@
                 return;
             }
 
-            // Get the correct save button based on game state
             const saveButton = gameState === 'P1_DRAWING' ? 
                 document.getElementById('saveCourseButton') : 
                 document.getElementById('victorySaveButton');
 
+            // Handle P1 drawing phase saving as before
             if (gameState === 'P1_DRAWING') {
                 if (!player1Path || player1Path.length < 2) {
                     alert("Rataa ei voi tallentaa, koska polku on liian lyhyt!");
@@ -2470,46 +2510,48 @@
                     console.error("Error saving P1 course to localStorage:", error);
                     alert("Radan tallentamisessa tapahtui virhe.");
                 }
-            } else if (gameState === 'SHOWING_SCORE') {
-                // This is the same as the existing saveCurrentCourse logic
+            } 
+            // Handle victory screen saving (only for new courses)
+            else if (gameState === 'SHOWING_SCORE') {
                 if (!smoothedPath || smoothedPath.length < 2) {
                     console.error("Cannot save: No valid Player 1 path exists.");
                     alert("Rataa ei voi tallentaa, koska Pelaaja 1:n polkua ei ole piirretty kunnolla.");
                     return;
                 }
 
-                if (currentSessionHighScore <= 0 || !currentSessionBestPlayer2Path || currentSessionBestPlayer2Path.length < 2) {
-                    console.warn("Saving course with potentially zero score or missing P2 path for the session.");
-                }
-
-                const courseId = hashPath(smoothedPath);
-                const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-
-                const newCourseData = {
-                    id: courseId,
-                    name: courseName,
-                    player1Path: smoothedPath,
-                    highScore: currentSessionHighScore,
-                    highScorePlayer2Path: currentSessionBestPlayer2Path
-                };
-
                 try {
                     let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-                    const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
+                    
+                    // Only handle saving new courses - highscores are updated automatically
+                    if (!window.currentLoadedCourseId) {
+                        const courseId = hashPath(smoothedPath);
+                        const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+                        const newCourseData = {
+                            id: courseId,
+                            name: courseName,
+                            player1Path: smoothedPath,
+                            highScore: currentSessionHighScore,
+                            highScorePlayer2Path: currentSessionBestPlayer2Path
+                        };
 
-                    if (existingCourseIndex === -1) {
-                        savedCourses.push(newCourseData);
-                        localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
-                        console.log(`Course saved for the first time: ${newCourseData.name}`, newCourseData);
-                        saveButton.textContent = 'Tallennettu!';
-                        saveButton.disabled = true;
-                    } else {
-                        console.warn(`Save button clicked, but course ${courseId} already exists.`);
-                        saveButton.textContent = 'Rata tallennettu';
-                        saveButton.disabled = true;
+                        const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
+                        if (existingCourseIndex === -1) {
+                            savedCourses.push(newCourseData);
+                            localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                            saveButton.textContent = 'Tallennettu!';
+                            saveButton.disabled = true;
+                        } else {
+                            saveButton.textContent = 'Rata jo tallennettu';
+                            saveButton.disabled = true;
+                        }
+
+                        // If sidebar is open, refresh it
+                        if (savedCoursesSidebar.classList.contains('visible')) {
+                            populateSavedCoursesSidebar();
+                        }
                     }
                 } catch (error) {
-                    console.error("Error saving new course to localStorage:", error);
+                    console.error("Error saving course:", error);
                     alert("Radan tallentamisessa tapahtui virhe.");
                     saveButton.textContent = 'Tallennus epäonnistui';
                     saveButton.disabled = false;
