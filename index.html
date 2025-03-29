@@ -205,14 +205,14 @@
         }
         .sidebar-content {
             flex-grow: 1;
-            overflow-y: scroll; /* Change from auto to scroll */
+            overflow-y: scroll;
             padding: 10px;
             display: flex;
             flex-direction: column;
             gap: 10px;
             -webkit-overflow-scrolling: touch;
-            overscroll-behavior: contain; /* Prevent scroll chaining */
-            touch-action: none; /* Remove default touch actions */
+            overscroll-behavior: contain;
+            touch-action: pan-y; /* Change back to pan-y */
         }
         .thumbnail-container {
             border: 1px solid #ccc;
@@ -226,8 +226,8 @@
             position: relative;
             transition: box-shadow 0.2s, transform 0.2s;
             -webkit-tap-highlight-color: transparent;
-            touch-action: none; /* Remove default touch actions */
-            user-select: none;
+            touch-action: pan-y; /* Change back to pan-y */
+            pointer-events: auto;
         }
         .thumbnail-container:hover {
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
@@ -2020,21 +2020,30 @@
                     return;
                 }
 
-                // Add touch event handlers to sidebar content
-                const sidebarContent = document.getElementById('sidebarContent');
+                // Track scroll state
+                let isScrolling = false;
                 let startY = 0;
+                let currentY = 0;
                 let startScrollTop = 0;
 
+                // Add touch handlers to sidebar content
                 sidebarContent.addEventListener('touchstart', (e) => {
+                    isScrolling = true;
                     startY = e.touches[0].pageY;
+                    currentY = startY;
                     startScrollTop = sidebarContent.scrollTop;
-                    e.stopPropagation(); // Prevent other touch handlers
                 }, { passive: true });
 
                 sidebarContent.addEventListener('touchmove', (e) => {
-                    const deltaY = startY - e.touches[0].pageY;
+                    if (!isScrolling) return;
+                    
+                    currentY = e.touches[0].pageY;
+                    const deltaY = startY - currentY;
                     sidebarContent.scrollTop = startScrollTop + deltaY;
-                    e.stopPropagation(); // Prevent other touch handlers
+                }, { passive: true });
+
+                sidebarContent.addEventListener('touchend', () => {
+                    isScrolling = false;
                 }, { passive: true });
 
                 savedCourses.forEach(course => {
@@ -2046,46 +2055,60 @@
                     const container = document.createElement('div');
                     container.className = 'thumbnail-container';
                     container.draggable = true;
-                    container.dataset.courseId = course.id; // Store ID for drag/drop
+                    container.dataset.courseId = course.id;
 
-                    // Add click handler with touch support
-                    container.addEventListener('click', (e) => {
-                        // Only load if not dragging (check if drag was initiated)
-                        if (!e.target.classList.contains('dragging')) {
-                            loadCourse(course);
-                        }
-                    });
-
-                    // Add touch handlers for better tablet support
+                    // Modify thumbnail touch handling
                     let touchStartTime = 0;
                     let touchStartX = 0;
                     let touchStartY = 0;
+                    let isTapping = false;
 
                     container.addEventListener('touchstart', (e) => {
                         touchStartTime = Date.now();
                         touchStartX = e.touches[0].clientX;
-                        touchStartY = e.touches[0].clientY;
-                        e.stopPropagation(); // Stop event from bubbling to sidebar scroll handler
+                        touchStartY = e.touches[0].pageY;
+                        isTapping = true;
+                        
+                        // Don't stop propagation - let the parent handle scrolling
+                    }, { passive: true });
+
+                    container.addEventListener('touchmove', (e) => {
+                        if (!isTapping) return;
+                        
+                        const touchCurrentX = e.touches[0].clientX;
+                        const touchCurrentY = e.touches[0].pageY;
+                        const deltaX = Math.abs(touchCurrentX - touchStartX);
+                        const deltaY = Math.abs(touchCurrentY - touchStartY);
+
+                        // If horizontal movement is greater than vertical, might be trying to drag
+                        if (deltaX > deltaY && deltaX > 10) {
+                            isTapping = false;
+                            // Here you could initiate drag behavior
+                        }
                     }, { passive: true });
 
                     container.addEventListener('touchend', (e) => {
+                        if (!isTapping) return;
+                        
                         const touchEndTime = Date.now();
                         const touchEndX = e.changedTouches[0].clientX;
                         const touchEndY = e.changedTouches[0].clientY;
                         
-                        // Calculate touch duration and distance
                         const touchDuration = touchEndTime - touchStartTime;
                         const touchDistance = Math.sqrt(
                             Math.pow(touchEndX - touchStartX, 2) + 
                             Math.pow(touchEndY - touchStartY, 2)
                         );
 
-                        // If it was a quick tap (less than 200ms) and minimal movement (less than 10px)
-                        if (touchDuration < 200 && touchDistance < 10 && !e.target.classList.contains('dragging')) {
+                        // If it was a quick tap with minimal movement
+                        if (touchDuration < 200 && touchDistance < 10) {
                             loadCourse(course);
                         }
-                    });
+                        
+                        isTapping = false;
+                    }, { passive: true });
 
+                    // Rest of your container setup code...
                     const canvasEl = document.createElement('canvas');
                     canvasEl.className = 'thumbnail-canvas';
                     canvasEl.width = THUMBNAIL_WIDTH;
