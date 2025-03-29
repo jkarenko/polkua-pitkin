@@ -142,7 +142,6 @@ export function createOutOfFuelEffect(x, y) {
     const FUEL_EMOJIS = ['💀', '⚡', '💩', '😡', '🤬', '💢', '💥'];
     const SPRAY_ANGLE = Math.PI / 2; // 90 degrees
     const SPRAY_START = -Math.PI / 4; // Start at -45 degrees from vertical
-    const SPRAY_END = Math.PI / 4; // End at +45 degrees from vertical
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
         const emoji = FUEL_EMOJIS[Math.floor(Math.random() * FUEL_EMOJIS.length)];
