@@ -1,0 +1,5 @@
+    <div id="controls">
+        <button id="doneButton">Valmis!</button>
+        <button id="saveP1CourseButton" style="display: none;">Tallenna rata</button>
+        <button id="resetButton" style="display: none;">Uusi Peli</button>
+    </div> 

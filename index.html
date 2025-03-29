@@ -263,8 +263,8 @@
 <body>
     <div id="controls">
         <button id="doneButton">Valmis!</button>
-        <button id="saveP1CourseButton" style="display: none;">Tallenna rata</button> <!-- Add this button -->
-        <button id="resetButton" style="display: none;">Uusi Peli</button>
+        <button id="saveP1CourseButton">Tallenna rata</button> <!-- Ensure this has NO display:none -->
+        <button id="resetButton" style="display: none;">Uusi Peli</button> <!-- Keep this hidden -->
         <div class="width-control">
             <label for="widthSlider">Polun leveys:</label>
             <input type="range" id="widthSlider" min="20" max="60" value="40">
@@ -274,7 +274,7 @@
     </div>
 
     <!-- Add Saved Courses Button -->
-    <button id="savedCoursesButton" class="top-right-button" style="display: none;">Tallennetut Polut</button>
+    <button id="savedCoursesButton" class="top-right-button">Tallennetut Polut</button> <!-- Ensure this has NO display:none -->
 
     <!-- Add Sidebar -->
     <div id="savedCoursesSidebar" class="sidebar right">
@@ -1441,9 +1441,15 @@
         trashCan.addEventListener('dragleave', handleTrashDragLeave); // Handle leaving the trash area
         trashCan.addEventListener('drop', handleTrashDrop);
 
-        // Initial setup
-        resizeCanvas();
-        resetGame(); // Initialize game state
+        // Initial setup - WRAP these calls
+        document.addEventListener('DOMContentLoaded', (event) => {
+            resizeCanvas();
+            resetGame(); // Initialize game state AFTER DOM is fully loaded
+        });
+
+        // Remove the original calls outside the listener:
+        // resizeCanvas(); // <-- Remove this line
+        // resetGame(); // <-- Remove this line
 
         function isPointInButton(point, buttonX, buttonY, buttonWidth, buttonHeight) {
             return point.x >= buttonX && 
