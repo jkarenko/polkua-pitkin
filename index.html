@@ -204,11 +204,13 @@
         }
         .sidebar-content {
             flex-grow: 1;
-            overflow-y: auto;
+            overflow-y: auto; /* Allows vertical scrolling */
             padding: 10px;
             display: flex;
             flex-direction: column;
             gap: 10px; /* Spacing between thumbnails */
+            touch-action: pan-y; /* Explicitly allow vertical panning/scrolling */
+            -webkit-overflow-scrolling: touch; /* Enable momentum scrolling on iOS */
         }
         .thumbnail-container {
             border: 1px solid #ccc;
