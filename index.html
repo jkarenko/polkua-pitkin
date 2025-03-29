@@ -320,7 +320,7 @@
     <script type="module">
         import { drawCar, CAR_CONSTANTS, createCar } from './src/car.js';
         import { playSound, playHonk, setHasInteracted } from './src/audio.js';
-        import { generateDecorationsForPath } from './src/decoration.js';
+        import { generateDecorationsForPath, generateDecorationsAlongSegment } from './src/decoration.js';
         import { createCrashEffect, createVictoryCelebration, createOutOfFuelEffect, updateAndDrawParticles } from './src/effects.js';
         
         const canvas = document.getElementById('gameCanvas');
@@ -1185,6 +1185,7 @@
             if (gameState === 'P1_DRAWING') {
                 isDrawing = true;
                 player1Path = [pos];
+                decorations = []; // Clear all decorations when starting to draw
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
             } else if (gameState === 'P2_WAITING') {
                 if (startMarker && dist(pos, startMarker) <= startMarker.snapRadius) {
@@ -1247,10 +1248,37 @@
                 ctx.lineJoin = 'round';
                 ctx.stroke();
 
-                // Regenerate decorations as the path is being drawn
+                // Remove decorations that are under the current segment
+                const erasureRadius = P1_WIDTH / 2; // Radius to check for decorations to remove
+                decorations = decorations.filter(decoration => {
+                    const distance = pointLineSegmentDistance(decoration.position, lastPos, pos);
+                    return distance > erasureRadius;
+                });
+
+                // Generate decorations only for the current segment
                 const decorationDensity = 5; // Average number of decorations per 100 pixels
                 const decorationOffset = P1_WIDTH * 1.5; // Distance to offset decorations from the path
-                decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
+                const newDecorations = generateDecorationsAlongSegment(lastPos, pos, decorationDensity, decorationOffset);
+                
+                // Filter out decorations that are too close to any existing path segment
+                const minDistanceToPath = P1_WIDTH * 1.2; // Slightly larger than the path width
+                const validDecorations = newDecorations.filter(decoration => {
+                    // Check distance to all existing path segments
+                    for (let i = 0; i < player1Path.length - 1; i++) {
+                        const segmentStart = player1Path[i];
+                        const segmentEnd = player1Path[i + 1];
+                        // Skip the current segment as it's already handled by the erasure
+                        if (segmentStart === lastPos && segmentEnd === pos) continue;
+                        
+                        const distance = pointLineSegmentDistance(decoration.position, segmentStart, segmentEnd);
+                        if (distance < minDistanceToPath) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+
+                decorations = decorations.concat(validDecorations);
                 redrawAll();
 
             } else if (gameState === 'P2_DRAWING') {
