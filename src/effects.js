@@ -1,11 +1,11 @@
 // Emoji particle system for effects
 const PARTICLE_COUNT = 20; // Number of particles per explosion
-const PARTICLE_LIFETIME = 2000; // How long particles live in milliseconds
+const PARTICLE_LIFETIME = 5000; // How long particles live in milliseconds
 const PARTICLE_SPEED = 2; // Base speed of particles
 const PARTICLE_SPREAD = Math.PI * 2; // Full circle spread
-const PARTICLE_SIZE = 20; // Size of emoji particles
-const GRAVITY = 0.0; // Gravity effect on particles
-const FRICTION = 0.98; // Air resistance effect
+const PARTICLE_SIZE = 40; // Size of emoji particles
+const GRAVITY = 0.05; // Gravity effect on particles
+const FRICTION = 0.99; // Air resistance effect
 
 /**
  * Represents a single emoji particle
@@ -127,6 +127,36 @@ export function createCrashEffect(x, y) {
         const speed = PARTICLE_SPEED * 1.5; // Faster particles for crash effect
         const emoji = CRASH_EMOJIS[Math.floor(Math.random() * CRASH_EMOJIS.length)];
         particles.push(new EmojiParticle(x, y, emoji, angle, speed));
+    }
+    return particles;
+}
+
+/**
+ * Creates an out of fuel effect with particles spraying upward
+ * @param {number} x - X coordinate of effect origin
+ * @param {number} y - Y coordinate of effect origin
+ * @returns {Array<EmojiParticle>} Array of new particles
+ */
+export function createOutOfFuelEffect(x, y) {
+    const particles = [];
+    const FUEL_EMOJIS = ['💀', '⚡', '💩', '😡', '🤬', '💢', '💥'];
+    const SPRAY_ANGLE = Math.PI / 2; // 90 degrees
+    const SPRAY_START = -Math.PI / 4; // Start at -45 degrees from vertical
+    const SPRAY_END = Math.PI / 4; // End at +45 degrees from vertical
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const emoji = FUEL_EMOJIS[Math.floor(Math.random() * FUEL_EMOJIS.length)];
+        const particle = new EmojiParticle(x, y, emoji, 0, 0); // Create with zero initial velocity
+
+        // Calculate random spread within 90-degree arc
+        const spreadAngle = SPRAY_START + (Math.random() * SPRAY_ANGLE);
+        const speed = PARTICLE_SPEED * (1.2 + Math.random() * 0.6);
+
+        // Set velocities directly for upward movement
+        particle.velocityX = Math.sin(spreadAngle) * speed;
+        particle.velocityY = -Math.cos(spreadAngle) * speed; // Negative for upward movement
+
+        particles.push(particle);
     }
     return particles;
 } 

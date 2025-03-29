@@ -321,7 +321,7 @@
         import { drawCar, CAR_CONSTANTS, createCar } from './src/car.js';
         import { playSound, playHonk, setHasInteracted } from './src/audio.js';
         import { generateDecorationsForPath } from './src/decoration.js';
-        import { createCrashEffect, createVictoryCelebration, updateAndDrawParticles } from './src/effects.js';
+        import { createCrashEffect, createVictoryCelebration, createOutOfFuelEffect, updateAndDrawParticles } from './src/effects.js';
         
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -1201,6 +1201,32 @@
             }
         }
 
+        function checkFuelLimit(currentPosition, distanceMoved, isDrawingPhase = false) {
+            if (defeatFlagged) return true; // Already defeated
+            
+            const effectivePathLength = isDrawingPhase ? 
+                getProgressAlongPath(currentPosition, player1Path) * player1TotalLength :
+                fuelConsumed + distanceMoved;
+            
+            if (effectivePathLength > maxAllowedPathLength) {
+                defeatFlagged = true;
+                playSound('alarm');
+                playSound('alarm');
+                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
+                
+                // Add crash effect at the current position
+                activeParticles.push(...createOutOfFuelEffect(currentPosition.x, currentPosition.y));
+                
+                // Start particle animation immediately
+                if (!particleAnimationFrame) {
+                    animateParticles();
+                }
+                
+                return true; // Indicates defeat
+            }
+            return false; // Indicates no defeat
+        }
+
         function handleMove(e) {
             if (!isDrawing || (e.touches && e.touches.length > 1)) return;
             e.preventDefault();
@@ -1234,23 +1260,10 @@
                 const newSegmentLength = dist(lastPos, pos);
                 currentPathLength += newSegmentLength;
 
-                // Check if we've exceeded the fuel limit using the same calculation as car animation
-                const progress = getProgressAlongPath(pos, player1Path);
-                const effectivePathLength = progress * player1TotalLength;
-                
-                if (effectivePathLength > maxAllowedPathLength) {
-                    defeatFlagged = true;
+                // Check fuel limit using shared function
+                if (checkFuelLimit(pos, newSegmentLength, true)) {
                     isDrawing = false; // Stop drawing
                     gameState = 'SHOWING_SCORE'; // Change state to show score
-                    statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
-                    playSound('alarm');
-                    playSound('alarm');
-                    
-                    // Add crash effect at the current position
-                    activeParticles.push(...createCrashEffect(pos.x, pos.y));
-                    
-                    // Start particle animation immediately
-                    animateParticles();
                     
                     // Add 1-second delay before showing defeat screen
                     setTimeout(() => {
@@ -1558,20 +1571,7 @@
 
             // --- Fuel Check ---
             // Check if this next move would exceed fuel limit
-            if (fuelConsumed + distanceMoved > maxAllowedPathLength && !defeatFlagged) {
-                defeatFlagged = true;
-                playSound('alarm');
-                playSound('alarm');
-                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
-                
-                // Add crash effect at the current position
-                activeParticles.push(...createCrashEffect(carPosition.x, carPosition.y));
-                
-                // Start particle animation immediately
-                if (!particleAnimationFrame) {
-                    animateParticles();
-                }
-                
+            if (checkFuelLimit(carPosition, distanceMoved, false)) {
                 // Stop the car immediately
                 if (carAnimationFrame) {
                     cancelAnimationFrame(carAnimationFrame);
