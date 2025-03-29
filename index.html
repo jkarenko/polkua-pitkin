@@ -744,16 +744,23 @@
             const scoreDisplay = document.getElementById('scoreDisplay');
             const scoreMessage = document.getElementById('scoreMessage');
             const saveButton = document.getElementById('saveCourseButton');
-            const newRecordMsg = document.getElementById('newRecordMessage'); // Get the new message element
+            const newRecordMsg = document.getElementById('newRecordMessage');
 
-            let newRecordSet = false; // Flag to track if a new record was automatically saved
+            // Store the high score *before* this run
+            const previousSessionHighScore = currentSessionHighScore;
+            let newRecordSet = false; // Reset flag
 
-            // Always update session high score if this run was better *for the session*
+            // Update session high score if this run was better *for the session*
             if (score > currentSessionHighScore) {
                 currentSessionHighScore = score;
                 currentSessionBestPlayer2Path = [...player2Path];
                 console.log(`New session high score for this path: ${currentSessionHighScore}`);
+                // Check if this new session high score is genuinely better than the previous one
+                if (score > previousSessionHighScore) {
+                     newRecordSet = true; // A new best score *for this session* was set
+                }
             }
+
 
             // Update display content
             scoreDisplay.textContent = `Pisteet: ${score}`;
@@ -761,7 +768,7 @@
             newRecordMsg.style.display = 'none'; // Hide message initially
             saveButton.style.display = 'none'; // Hide save button initially
 
-            // Check localStorage for existing course and handle auto-update
+            // Check localStorage for existing course and handle auto-update/button visibility
             try {
                 const courseId = hashPath(smoothedPath);
                 let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
@@ -771,31 +778,29 @@
                     // Course exists
                     const existingCourse = savedCourses[existingCourseIndex];
                     if (currentSessionHighScore > existingCourse.highScore) {
-                        // --- Auto-update high score ---
+                        // --- Auto-update high score in localStorage ---
                         existingCourse.highScore = currentSessionHighScore;
                         existingCourse.highScorePlayer2Path = currentSessionBestPlayer2Path;
-                        savedCourses[existingCourseIndex] = existingCourse; // Update the object in the array
+                        savedCourses[existingCourseIndex] = existingCourse;
                         localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
-                        console.log(`Course high score automatically updated: ${existingCourse.name} to ${currentSessionHighScore}`);
-                        newRecordSet = true; // Set flag for new record message
-                        // --- Button remains hidden ---
-                    } else {
-                        // Course exists, but score is not better
-                        // --- Button remains hidden ---
-                        console.log(`Course ${courseId} already saved, score not improved.`);
+                        console.log(`Course high score automatically updated in storage: ${existingCourse.name} to ${currentSessionHighScore}`);
+                        // Ensure the flag is set if we beat a saved score, even if it wasn't higher than the absolute previous score somehow
+                        // (e.g., if localStorage was out of sync - defensive check)
+                        newRecordSet = true;
                     }
+                     // Button remains hidden as course is saved
                 } else {
                     // Course does not exist yet - SHOW manual save button
                     saveButton.textContent = 'Tallenna rata';
                     saveButton.disabled = false;
-                    saveButton.style.display = 'inline-block'; // Explicitly show the button
+                    saveButton.style.display = 'inline-block';
                 }
             } catch (error) {
                 console.error("Error accessing/updating saved courses:", error);
-                // --- Button remains hidden on error ---
+                // Button remains hidden on error
             }
 
-            // Show the "New Record" message if applicable
+            // Show the "New Record" message if applicable (covers session AND storage records)
             if (newRecordSet) {
                 newRecordMsg.style.display = 'block';
             }
