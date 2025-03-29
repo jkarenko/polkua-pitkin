@@ -1781,24 +1781,30 @@
             const pathWidth = maxX - minX;
             const pathHeight = maxY - minY;
 
-            if (pathWidth <= 0 || pathHeight <= 0) return; // Avoid division by zero
+            // Handle cases where path is a point or a straight vertical/horizontal line
+            const effectivePathWidth = pathWidth === 0 ? 1 : pathWidth; // Give it minimal width/height if zero
+            const effectivePathHeight = pathHeight === 0 ? 1 : pathHeight;
 
             // Calculate scale to fit within padded area
             const availableWidth = width - 2 * THUMBNAIL_PADDING;
             const availableHeight = height - 2 * THUMBNAIL_PADDING;
-            const scale = Math.min(availableWidth / pathWidth, availableHeight / pathHeight);
+            // Ensure available dimensions are positive
+            if (availableWidth <= 0 || availableHeight <= 0) return;
+
+            const scale = Math.min(availableWidth / effectivePathWidth, availableHeight / effectivePathHeight);
 
             // Calculate translation to center the scaled path
-            const scaledWidth = pathWidth * scale;
-            const scaledHeight = pathHeight * scale;
+            const scaledWidth = effectivePathWidth * scale;
+            const scaledHeight = effectivePathHeight * scale;
             const offsetX = THUMBNAIL_PADDING + (availableWidth - scaledWidth) / 2;
             const offsetY = THUMBNAIL_PADDING + (availableHeight - scaledHeight) / 2;
+            // Adjust translation based on the original min points and the calculated scale/offset
             const translateX = offsetX - minX * scale;
             const translateY = offsetY - minY * scale;
 
             // Draw the scaled path
             thumbCtx.strokeStyle = P1_COLOR;
-            thumbCtx.lineWidth = 3; // Thin line for thumbnail
+            thumbCtx.lineWidth = 5; // Increased line width to match marker size visually
             thumbCtx.lineCap = 'round';
             thumbCtx.lineJoin = 'round';
             thumbCtx.beginPath();
@@ -1808,15 +1814,19 @@
             }
             thumbCtx.stroke();
 
-            // Optional: Draw start/end markers simplified
+            // Draw start/end markers (size remains 5)
             thumbCtx.fillStyle = START_COLOR;
             thumbCtx.beginPath();
             thumbCtx.arc(path[0].x * scale + translateX, path[0].y * scale + translateY, 5, 0, Math.PI*2);
             thumbCtx.fill();
-            thumbCtx.fillStyle = END_COLOR;
-            thumbCtx.beginPath();
-            thumbCtx.arc(path[path.length-1].x * scale + translateX, path[path.length-1].y * scale + translateY, 5, 0, Math.PI*2);
-            thumbCtx.fill();
+
+            // Ensure there's a distinct end point before drawing the end marker
+            if (path.length > 1) {
+                thumbCtx.fillStyle = END_COLOR;
+                thumbCtx.beginPath();
+                thumbCtx.arc(path[path.length-1].x * scale + translateX, path[path.length-1].y * scale + translateY, 5, 0, Math.PI*2);
+                thumbCtx.fill();
+            }
         }
 
         function populateSavedCoursesSidebar() {
