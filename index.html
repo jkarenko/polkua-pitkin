@@ -821,9 +821,9 @@
              }
 
              // Generate decorations
-             const decorationDensity = 5; // <-- INCREASED from 0.8. Try values like 5 or 10
-             const decorationOffset = P1_WIDTH * 1.5; // Adjust offset based on path width
-             decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
+             //const decorationDensity = 5; // <-- INCREASED from 0.8. Try values like 5 or 10
+             //const decorationOffset = P1_WIDTH * 1.5; // Adjust offset based on path width
+             //decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
 
              redrawAll();
         }
@@ -1246,6 +1246,12 @@
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
                 ctx.stroke();
+
+                // Regenerate decorations as the path is being drawn
+                const decorationDensity = 5; // Average number of decorations per 100 pixels
+                const decorationOffset = P1_WIDTH * 1.5; // Distance to offset decorations from the path
+                decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
+                redrawAll();
 
             } else if (gameState === 'P2_DRAWING') {
                 const threshold = P1_WIDTH / 2 * HIT_THRESHOLD_FACTOR;

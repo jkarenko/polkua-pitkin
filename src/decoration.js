@@ -272,7 +272,15 @@ export function generateDecorationsAlongSegment(p1, p2, density, offsetDistance)
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const segmentLength = Math.sqrt(dx * dx + dy * dy);
-    const numDecorations = Math.floor(segmentLength * (density / 100) * random(0.8, 1.2)); // Add some randomness
+
+    // Ensure minimum segment length to avoid division by zero
+    if (segmentLength < 1) {
+        return decorations;
+    }
+
+    // Adjust density based on segment length to ensure consistent decoration spacing
+    const adjustedDensity = density * (Math.min(segmentLength, 100) / 100);
+    const numDecorations = Math.max(1, Math.floor(segmentLength * (adjustedDensity / 100) * random(0.8, 1.2)));
 
     const normX = dx / segmentLength;
     const normY = dy / segmentLength;
@@ -283,13 +291,18 @@ export function generateDecorationsAlongSegment(p1, p2, density, offsetDistance)
     const perpX_right = normY;
     const perpY_right = -normX;
 
+    // Minimum distance from path (in pixels)
+    const MIN_DISTANCE_FROM_PATH = 20;
+
     for (let i = 0; i < numDecorations; i++) {
-        const t = random(0.1, 0.9); // Position along the segment (avoid ends)
+        // Use a more even distribution along the segment
+        const t = 0.1 + (i / numDecorations) * 0.8;
         const pathX = p1.x + t * dx;
         const pathY = p1.y + t * dy;
 
         const side = Math.random() < 0.5 ? 'left' : 'right';
-        const actualOffset = offsetDistance * random(0.8, 2.0); // Vary offset distance
+        // Ensure minimum offset distance from path
+        const actualOffset = Math.max(offsetDistance * 0.8, offsetDistance * random(0.8, 2.0));
 
         let decorationX, decorationY;
         if (side === 'left') {
@@ -300,7 +313,26 @@ export function generateDecorationsAlongSegment(p1, p2, density, offsetDistance)
             decorationY = pathY + perpY_right * actualOffset;
         }
 
-        decorations.push(generateRandomDecoration({ x: decorationX, y: decorationY }));
+        // Create a temporary decoration to check its dimensions
+        const tempDecoration = generateRandomDecoration({ x: decorationX, y: decorationY });
+
+        // Calculate the distance from the path to the decoration's lowest point
+        const decorationLowestY = tempDecoration.getLowestY();
+        const distanceFromPath = Math.abs(decorationLowestY - pathY);
+
+        // Only add the decoration if it's far enough from the path
+        if (distanceFromPath >= MIN_DISTANCE_FROM_PATH) {
+            decorations.push(tempDecoration);
+        } else {
+            // Try to adjust the position to maintain minimum distance
+            const adjustment = MIN_DISTANCE_FROM_PATH - distanceFromPath;
+            if (side === 'left') {
+                decorationY += perpY_left * adjustment;
+            } else {
+                decorationY += perpY_right * adjustment;
+            }
+            decorations.push(generateRandomDecoration({ x: decorationX, y: decorationY }));
+        }
     }
 
     return decorations;
