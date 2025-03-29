@@ -128,6 +128,126 @@
         .new-game-button:hover {
             background-color: #0b7dda;
         }
+
+        /* Add Saved Courses Button */
+        .top-right-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            padding: 8px 15px;
+            font-size: 1rem;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .top-right-button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Add Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            height: 100%;
+            width: 280px; /* Adjust width as needed */
+            background-color: rgba(240, 240, 240, 0.95);
+            box-shadow: -2px 0 5px rgba(0,0,0,0.2);
+            transform: translateX(100%); /* Start hidden off-screen */
+            transition: transform 0.3s ease-in-out;
+            z-index: 101;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar.right {
+            right: 0;
+            transform: translateX(100%);
+        }
+        .sidebar.visible {
+            transform: translateX(0);
+        }
+        .sidebar h2 {
+            color: #333;
+            text-align: center;
+            padding: 15px;
+            margin: 0;
+            border-bottom: 1px solid #ccc;
+            font-size: 1.4em;
+        }
+        .close-button {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 2em;
+            cursor: pointer;
+            color: #666;
+        }
+        .close-button:hover {
+            color: #000;
+        }
+        .sidebar-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px; /* Spacing between thumbnails */
+        }
+        .thumbnail-container {
+            border: 1px solid #ccc;
+            background-color: white;
+            padding: 5px;
+            border-radius: 4px;
+            cursor: grab;
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Center canvas */
+            position: relative; /* For positioning stars */
+            transition: box-shadow 0.2s;
+        }
+        .thumbnail-container:active {
+            cursor: grabbing;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .thumbnail-canvas {
+            width: 240px; /* Adjust as needed */
+            height: 150px; /* Adjust as needed */
+            display: block;
+            background-color: #e9f5ff; /* Light blue background */
+            margin-bottom: 5px; /* Space before stars */
+        }
+        .thumbnail-stars {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            font-size: 1.1em;
+            color: gold;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.4);
+        }
+
+        .trash-can {
+            position: fixed;
+            bottom: 20px;
+            left: 20px; /* Position relative to viewport */
+            z-index: 102; /* Above sidebar potentially */
+            font-size: 3em;
+            padding: 15px;
+            background-color: rgba(255, 0, 0, 0.6);
+            color: white;
+            border-radius: 50%;
+            cursor: default;
+            transition: background-color 0.3s, transform 0.3s;
+            display: none; /* Hidden by default */
+        }
+        .trash-can.active-drop {
+            background-color: rgba(255, 0, 0, 0.9);
+            transform: scale(1.1);
+        }
     </style>
 </head>
 <body>
@@ -141,7 +261,24 @@
         </div>
         <div id="status">Pelaaja 1: Piirrä polku.</div>
     </div>
-    
+
+    <!-- Add Saved Courses Button -->
+    <button id="savedCoursesButton" class="top-right-button" style="display: none;">Tallennetut Polut</button>
+
+    <!-- Add Sidebar -->
+    <div id="savedCoursesSidebar" class="sidebar right">
+        <button id="closeSidebarButton" class="close-button">&times;</button>
+        <h2>Tallennetut Radat</h2>
+        <div id="sidebarContent" class="sidebar-content">
+            <!-- Thumbnails will be added here -->
+        </div>
+    </div>
+
+    <!-- Add Trashcan -->
+    <div id="trashCan" class="trash-can" style="display: none;">
+        🗑️
+    </div>
+
     <!-- Victory screen -->
     <div id="victoryScreen" class="game-screen">
         <h1>Pääsit Maaliin!</h1>
@@ -177,6 +314,11 @@
         const doneButton = document.getElementById('doneButton');
         const resetButton = document.getElementById('resetButton');
         const statusDiv = document.getElementById('status');
+        const savedCoursesButton = document.getElementById('savedCoursesButton'); // New button
+        const savedCoursesSidebar = document.getElementById('savedCoursesSidebar'); // New sidebar
+        const sidebarContent = document.getElementById('sidebarContent'); // Sidebar content area
+        const closeSidebarButton = document.getElementById('closeSidebarButton'); // Close button
+        const trashCan = document.getElementById('trashCan'); // Trashcan element
 
         // --- Constants ---
         const P1_COLOR = 'lightblue';
@@ -192,6 +334,9 @@
         const SCORE_THRESHOLD = 20;
         const SCORE_POINTS = 100;
         const MAX_PATH_LENGTH_FACTOR = 1.20;
+        const THUMBNAIL_WIDTH = 240;
+        const THUMBNAIL_HEIGHT = 150;
+        const THUMBNAIL_PADDING = 10; // Padding inside thumbnail canvas
 
         // Car constants
         const CAR_PIXEL_SPEED = 2;
@@ -232,6 +377,7 @@
         // Add these state variables for session high score tracking
         let currentSessionHighScore = 0;
         let currentSessionBestPlayer2Path = [];
+        let draggedCourseId = null; // Track the ID of the course being dragged
 
         // Car state
         let carProgress = 0;
@@ -604,6 +750,7 @@
              isDrawing = false;
              doneButton.style.display = 'none';
              resetButton.style.display = 'inline-block';
+             savedCoursesButton.style.display = 'none'; // Hide button when P1 is done
              statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
 
             player1TotalLength = calculatePathLength(player1Path);
@@ -1032,6 +1179,9 @@
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             isScreeching = false; // <--- Reset screeching state
+            savedCoursesButton.style.display = 'inline-block'; // Show button in P1 phase
+            closeSidebar(); // Ensure sidebar is closed on new game
+            hideTrashCan(); // Ensure trashcan is hidden
         }
 
         // --- Event Handlers ---
@@ -1260,6 +1410,19 @@
         document.getElementById('saveCourseButton').addEventListener('click', saveCurrentCourse); // Add listener for the new button
         document.getElementById('defeatReplayButton').addEventListener('click', replayLevel);
         document.getElementById('defeatNewGameButton').addEventListener('click', resetGame);
+
+        // Add listeners for new UI elements
+        savedCoursesButton.addEventListener('click', openSidebar);
+        closeSidebarButton.addEventListener('click', closeSidebar);
+
+        // Add Drag/Drop listeners for canvas (loading)
+        canvas.addEventListener('dragover', handleCanvasDragOver);
+        canvas.addEventListener('drop', handleCanvasDrop);
+
+        // Add Drag/Drop listeners for trashcan (deleting)
+        trashCan.addEventListener('dragover', handleTrashDragOver);
+        trashCan.addEventListener('dragleave', handleTrashDragLeave); // Handle leaving the trash area
+        trashCan.addEventListener('drop', handleTrashDrop);
 
         // Initial setup
         resizeCanvas();
@@ -1556,6 +1719,304 @@
             // Stringify with fixed precision to handle floating point variations
             const pathString = JSON.stringify(path.map(p => ({ x: p.x.toFixed(3), y: p.y.toFixed(3) })));
             return simpleHash(pathString);
+        }
+
+        // --- UI Functions ---
+
+        function openSidebar() {
+            populateSavedCoursesSidebar(); // Load content when opening
+            savedCoursesSidebar.classList.add('visible');
+        }
+
+        function closeSidebar() {
+            savedCoursesSidebar.classList.remove('visible');
+        }
+
+        function showTrashCan() {
+            trashCan.style.display = 'block';
+        }
+
+        function hideTrashCan() {
+            trashCan.style.display = 'none';
+            trashCan.classList.remove('active-drop'); // Remove hover effect
+        }
+
+        function getStarRatingHTML(score) {
+            const maxStars = 5;
+            let stars = 0;
+            if (score >= 90) stars = 5;
+            else if (score >= 80) stars = 4;
+            else if (score >= 70) stars = 3;
+            else if (score >= 60) stars = 2;
+            else if (score >= 50) stars = 1;
+
+            let html = '';
+            for (let i = 0; i < stars; i++) {
+                html += '⭐'; // Full star
+            }
+            for (let i = stars; i < maxStars; i++) {
+                // html += '☆'; // Outline star (optional)
+            }
+            return html;
+        }
+
+        function drawThumbnail(canvasElement, path) {
+            const thumbCtx = canvasElement.getContext('2d');
+            const width = canvasElement.width;
+            const height = canvasElement.height;
+
+            thumbCtx.clearRect(0, 0, width, height);
+
+            if (!path || path.length < 2) return;
+
+            // Find path bounds
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            path.forEach(p => {
+                minX = Math.min(minX, p.x);
+                minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x);
+                maxY = Math.max(maxY, p.y);
+            });
+
+            const pathWidth = maxX - minX;
+            const pathHeight = maxY - minY;
+
+            if (pathWidth <= 0 || pathHeight <= 0) return; // Avoid division by zero
+
+            // Calculate scale to fit within padded area
+            const availableWidth = width - 2 * THUMBNAIL_PADDING;
+            const availableHeight = height - 2 * THUMBNAIL_PADDING;
+            const scale = Math.min(availableWidth / pathWidth, availableHeight / pathHeight);
+
+            // Calculate translation to center the scaled path
+            const scaledWidth = pathWidth * scale;
+            const scaledHeight = pathHeight * scale;
+            const offsetX = THUMBNAIL_PADDING + (availableWidth - scaledWidth) / 2;
+            const offsetY = THUMBNAIL_PADDING + (availableHeight - scaledHeight) / 2;
+            const translateX = offsetX - minX * scale;
+            const translateY = offsetY - minY * scale;
+
+            // Draw the scaled path
+            thumbCtx.strokeStyle = P1_COLOR;
+            thumbCtx.lineWidth = 3; // Thin line for thumbnail
+            thumbCtx.lineCap = 'round';
+            thumbCtx.lineJoin = 'round';
+            thumbCtx.beginPath();
+            thumbCtx.moveTo(path[0].x * scale + translateX, path[0].y * scale + translateY);
+            for (let i = 1; i < path.length; i++) {
+                thumbCtx.lineTo(path[i].x * scale + translateX, path[i].y * scale + translateY);
+            }
+            thumbCtx.stroke();
+
+            // Optional: Draw start/end markers simplified
+            thumbCtx.fillStyle = START_COLOR;
+            thumbCtx.beginPath();
+            thumbCtx.arc(path[0].x * scale + translateX, path[0].y * scale + translateY, 5, 0, Math.PI*2);
+            thumbCtx.fill();
+            thumbCtx.fillStyle = END_COLOR;
+            thumbCtx.beginPath();
+            thumbCtx.arc(path[path.length-1].x * scale + translateX, path[path.length-1].y * scale + translateY, 5, 0, Math.PI*2);
+            thumbCtx.fill();
+        }
+
+        function populateSavedCoursesSidebar() {
+            sidebarContent.innerHTML = ''; // Clear existing content
+            try {
+                const savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                if (savedCourses.length === 0) {
+                    sidebarContent.innerHTML = '<p style="text-align: center; color: #666;">Ei tallennettuja ratoja.</p>';
+                    return;
+                }
+
+                savedCourses.forEach(course => {
+                    if (!course || !course.id || !course.player1Path) {
+                        console.warn("Skipping invalid course data:", course);
+                        return;
+                    }
+
+                    const container = document.createElement('div');
+                    container.className = 'thumbnail-container';
+                    container.draggable = true;
+                    container.dataset.courseId = course.id; // Store ID for drag/drop
+
+                    const canvasEl = document.createElement('canvas');
+                    canvasEl.className = 'thumbnail-canvas';
+                    canvasEl.width = THUMBNAIL_WIDTH; // Set canvas drawing size
+                    canvasEl.height = THUMBNAIL_HEIGHT;
+
+                    const starsEl = document.createElement('div');
+                    starsEl.className = 'thumbnail-stars';
+                    starsEl.innerHTML = getStarRatingHTML(course.highScore || 0);
+
+                    container.appendChild(canvasEl);
+                    container.appendChild(starsEl);
+                    sidebarContent.appendChild(container);
+
+                    // Draw after appending (sometimes needed for context)
+                    drawThumbnail(canvasEl, course.player1Path);
+
+                    // Add drag listeners to the container
+                    container.addEventListener('dragstart', handleThumbnailDragStart);
+                    container.addEventListener('dragend', handleThumbnailDragEnd);
+                });
+
+            } catch (error) {
+                console.error("Error loading saved courses for sidebar:", error);
+                sidebarContent.innerHTML = '<p style="color: red;">Radan lataus epäonnistui.</p>';
+            }
+        }
+
+        // --- Course Loading/Deleting ---
+
+        function loadCourse(courseData) {
+            if (!courseData || !courseData.player1Path) {
+                console.error("Invalid course data provided for loading.");
+                return;
+            }
+            console.log(`Loading course: ${courseData.name} (ID: ${courseData.id})`);
+
+            // Reset current game state partially (like resetGame but keep sidebar open?)
+            // Hide screens first
+            document.getElementById('victoryScreen').style.display = 'none';
+            document.getElementById('defeatScreen').style.display = 'none';
+
+            // Reset relevant state vars
+            player1Path = courseData.player1Path; // Use the loaded path
+            smoothedPath = [...player1Path]; // Set smoothedPath as well (assuming raw path is used)
+            player2Path = [];
+            isDrawing = false;
+            lastPlayedProgressMilestone = 0;
+            startMarker = null; // Will be recalculated
+            endMarker = null;   // Will be recalculated
+            progressMarkers = [];
+            currentActiveSegmentIndex = 0;
+            maxAllowedPathLength = 0;
+            currentPathLength = 0;
+            fuelConsumed = 0;
+            previousCarPosition = null;
+            defeatFlagged = false;
+            carConfig = null;
+            decorations = [];
+            tireMarks = [];
+
+            // IMPORTANT: Set the session high score from the loaded course
+            currentSessionHighScore = courseData.highScore || 0;
+            currentSessionBestPlayer2Path = courseData.highScorePlayer2Path || [];
+
+            // Update controls visibility
+            doneButton.style.display = 'none'; // P1 is done by loading
+            resetButton.style.display = 'inline-block';
+
+            // Stop any ongoing car animation/sound
+            if (carAnimationFrame) cancelAnimationFrame(carAnimationFrame);
+            carAnimationFrame = null;
+            if (engineSound) { engineSound.mainOsc.stop(); engineSound.varOsc.stop(); engineSound = null; }
+            carProgress = 0; carPosition = { x: 0, y: 0 }; carAngle = 0; carTrail = []; isScreeching = false;
+
+            // Now, trigger the logic similar to handleP1Done to set up P2 phase
+            // This recalculates markers, length, decorations based on the loaded player1Path
+            handleP1Done(); // This sets gameState to 'P2_WAITING' and redraws
+
+            closeSidebar(); // Close sidebar after loading
+            statusDiv.textContent = `Ladattu rata: ${courseData.name}. Pelaaja 2: Seuraa polkua.`;
+        }
+
+        function deleteCourse(courseId) {
+             if (!courseId) return;
+             console.log(`Attempting to delete course: ${courseId}`);
+            try {
+                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                const initialLength = savedCourses.length;
+                savedCourses = savedCourses.filter(course => course.id !== courseId);
+
+                if (savedCourses.length < initialLength) {
+                    localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                    console.log(`Course ${courseId} deleted.`);
+                    // Refresh the sidebar to remove the thumbnail visually
+                    populateSavedCoursesSidebar();
+                    return true; // Indicate success
+                } else {
+                    console.warn(`Course ${courseId} not found for deletion.`);
+                    return false;
+                }
+            } catch (error) {
+                console.error("Error deleting course:", error);
+                alert("Radan poistaminen epäonnistui.");
+                return false;
+            }
+        }
+
+        // --- Drag and Drop Handlers ---
+
+        function handleThumbnailDragStart(e) {
+            // Check if it's a valid thumbnail container
+            if (e.target.classList.contains('thumbnail-container')) {
+                draggedCourseId = e.target.dataset.courseId;
+                e.dataTransfer.setData('text/plain', draggedCourseId);
+                e.dataTransfer.effectAllowed = 'move'; // Indicate moving is allowed
+                showTrashCan(); // Show trashcan when dragging starts
+                // Optional: Add a dragging style to the thumbnail
+                e.target.style.opacity = '0.5';
+            } else {
+                e.preventDefault(); // Prevent dragging if not the container
+            }
+        }
+
+        function handleThumbnailDragEnd(e) {
+             // Check if it's a valid thumbnail container ending drag
+             if (e.target.classList.contains('thumbnail-container')) {
+                // Restore appearance
+                e.target.style.opacity = '1';
+                hideTrashCan(); // Always hide trashcan when drag ends
+                draggedCourseId = null; // Clear the dragged ID
+             }
+        }
+
+        function handleCanvasDragOver(e) {
+            e.preventDefault(); // Necessary to allow dropping
+            e.dataTransfer.dropEffect = 'move'; // Indicate dropping is possible
+            // Optional: Add visual feedback to canvas (e.g., border)
+        }
+
+        function handleCanvasDrop(e) {
+            e.preventDefault();
+            const courseId = e.dataTransfer.getData('text/plain');
+            if (courseId) {
+                 try {
+                    const savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                    const courseToLoad = savedCourses.find(c => c.id === courseId);
+                    if (courseToLoad) {
+                        loadCourse(courseToLoad);
+                    } else {
+                        console.error(`Course with ID ${courseId} not found in localStorage.`);
+                    }
+                 } catch (error) {
+                     console.error("Error loading course on drop:", error);
+                 }
+            }
+             hideTrashCan(); // Hide trash after drop
+        }
+
+        function handleTrashDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            trashCan.classList.add('active-drop'); // Highlight trashcan
+        }
+
+         function handleTrashDragLeave(e) {
+             trashCan.classList.remove('active-drop'); // Remove highlight
+         }
+
+        function handleTrashDrop(e) {
+            e.preventDefault();
+            const courseId = e.dataTransfer.getData('text/plain');
+            if (courseId) {
+                // Optional: Add a confirmation dialog
+                // if (confirm(`Haluatko varmasti poistaa tämän radan?`)) {
+                     deleteCourse(courseId);
+                // }
+            }
+            hideTrashCan(); // Hide trashcan after drop
         }
 
     </script>
