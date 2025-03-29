@@ -274,8 +274,6 @@ export function generateDecorationsAlongSegment(p1, p2, density, offsetDistance)
     const segmentLength = Math.sqrt(dx * dx + dy * dy);
     const numDecorations = Math.floor(segmentLength * (density / 100) * random(0.8, 1.2)); // Add some randomness
 
-    if (segmentLength < 10) return []; // Don't generate on very short segments
-
     const normX = dx / segmentLength;
     const normY = dy / segmentLength;
 
