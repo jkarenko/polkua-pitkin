@@ -220,11 +220,22 @@
             flex-direction: column;
             align-items: center; /* Center canvas */
             position: relative; /* For positioning stars */
-            transition: box-shadow 0.2s;
+            transition: box-shadow 0.2s, transform 0.2s;
+            touch-action: none; /* Prevent default touch actions */
+            -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+        }
+        .thumbnail-container:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transform: translateY(-2px);
         }
         .thumbnail-container:active {
             cursor: grabbing;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transform: translateY(0);
+        }
+        .thumbnail-container.dragging {
+            opacity: 0.7;
+            cursor: grabbing;
         }
         .thumbnail-canvas {
             width: 240px; /* Adjust as needed */
@@ -1132,6 +1143,7 @@
             carConfig = null; // Reset car configuration
             decorations = []; // Clear decorations array
             tireMarks = []; // Clear tire marks
+            carTrail = []; // Clear car trail array
             // Reset session high score when starting a completely new game
             currentSessionHighScore = 0;
             currentSessionBestPlayer2Path = [];
@@ -1532,7 +1544,7 @@
             carProgress = 0;
             carPosition = { x: 0, y: 0 };
             carAngle = 0;
-            carTrail = [];
+            carTrail = []; // Clear car trail array
             tireMarks = []; // <--- Clear tire marks
             isScreeching = false; // <--- Reset screeching state
             
@@ -1965,9 +1977,46 @@
                     container.draggable = true;
                     container.dataset.courseId = course.id; // Store ID for drag/drop
 
+                    // Add click handler with touch support
+                    container.addEventListener('click', (e) => {
+                        // Only load if not dragging (check if drag was initiated)
+                        if (!e.target.classList.contains('dragging')) {
+                            loadCourse(course);
+                        }
+                    });
+
+                    // Add touch handlers for better tablet support
+                    let touchStartTime = 0;
+                    let touchStartX = 0;
+                    let touchStartY = 0;
+
+                    container.addEventListener('touchstart', (e) => {
+                        touchStartTime = Date.now();
+                        touchStartX = e.touches[0].clientX;
+                        touchStartY = e.touches[0].clientY;
+                    });
+
+                    container.addEventListener('touchend', (e) => {
+                        const touchEndTime = Date.now();
+                        const touchEndX = e.changedTouches[0].clientX;
+                        const touchEndY = e.changedTouches[0].clientY;
+                        
+                        // Calculate touch duration and distance
+                        const touchDuration = touchEndTime - touchStartTime;
+                        const touchDistance = Math.sqrt(
+                            Math.pow(touchEndX - touchStartX, 2) + 
+                            Math.pow(touchEndY - touchStartY, 2)
+                        );
+
+                        // If it was a quick tap (less than 200ms) and minimal movement (less than 10px)
+                        if (touchDuration < 200 && touchDistance < 10 && !e.target.classList.contains('dragging')) {
+                            loadCourse(course);
+                        }
+                    });
+
                     const canvasEl = document.createElement('canvas');
                     canvasEl.className = 'thumbnail-canvas';
-                    canvasEl.width = THUMBNAIL_WIDTH; // Set canvas drawing size
+                    canvasEl.width = THUMBNAIL_WIDTH;
                     canvasEl.height = THUMBNAIL_HEIGHT;
 
                     const starsEl = document.createElement('div');
@@ -1978,12 +2027,22 @@
                     container.appendChild(starsEl);
                     sidebarContent.appendChild(container);
 
-                    // Draw after appending (sometimes needed for context)
+                    // Draw after appending
                     drawThumbnail(canvasEl, course.player1Path);
 
-                    // Add drag listeners to the container
-                    container.addEventListener('dragstart', handleThumbnailDragStart);
-                    container.addEventListener('dragend', handleThumbnailDragEnd);
+                    // Enhanced drag handlers
+                    container.addEventListener('dragstart', (e) => {
+                        e.target.classList.add('dragging');
+                        handleThumbnailDragStart(e);
+                    });
+
+                    container.addEventListener('dragend', (e) => {
+                        e.target.classList.remove('dragging');
+                        handleThumbnailDragEnd(e);
+                    });
+
+                    // Add touch-action: none to prevent scrolling while dragging
+                    container.style.touchAction = 'none';
                 });
 
             } catch (error) {
