@@ -381,6 +381,13 @@
         const CAR_TURN_SPEED = 0.1; // This might be less relevant now
         const MAX_WHEEL_ANGLE = Math.PI / 4;
         const WHEELBASE = 20; // Distance between front and rear axles (adjust as needed)
+        // Skid Constants
+        const HANDBRAKE_CURVATURE_THRESHOLD = 0.75; // Curvature needed to initiate skid (adjust 0.0 to MAX_CURVATURE)
+        const MIN_SKID_SPEED_FACTOR = 0.01; // Minimum speed (factor of CAR_PIXEL_SPEED) to initiate skid
+        const SKID_EXIT_CURVATURE = 0.5;   // Curvature below which skid stops
+        const MIN_SKID_EXIT_SPEED_FACTOR = 0.1; // Minimum speed below which skid stops
+        const SKID_TURN_RATE_MULTIPLIER = 0.15; // How quickly the car rotates during skid (adjust)
+        const SKID_DECELERATION_FACTOR = 0.95; // Speed multiplier each frame during skid (e.g., 0.95 = 5% reduction)
 
         // --- State ---
         let gameState = 'P1_DRAWING';
@@ -422,6 +429,7 @@
         let carConfig = null;  // Add car configuration state
         let previousCarAngle = 0; // <--- Add state for previous car angle
         let isScreeching = false; // <--- Add state for current screech status
+        let isSkidding = false;   // <--- Add state for handbrake skid
         const TURN_THRESHOLD = 0.5;
         const SOUND_COOLDOWN = 500; // We might not need SOUND_COOLDOWN anymore
 
@@ -1173,6 +1181,7 @@
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             isScreeching = false; // <--- Reset screeching state
+            isSkidding = false; // Add this
             savedCoursesButton.style.display = 'inline-block'; // Show button in P1 phase
             closeSidebar(); // Ensure sidebar is closed on new game
             hideTrashCan(); // Ensure trashcan is hidden
@@ -1548,6 +1557,7 @@
             carTrail = []; // Clear car trail array
             tireMarks = []; // <--- Clear tire marks
             isScreeching = false; // <--- Reset screeching state
+            isSkidding = false; // Add this
             
             // Stop engine sound if playing
             if (engineSound) {
@@ -1632,23 +1642,19 @@
 
             // --- Update Car Angle (Heading) based on Physics ---
             let deltaAngle = 0;
-            if (Math.abs(currentWheelAngle) > 0.01 && WHEELBASE > 0) { // Avoid division by zero and tiny angles
-                 // dt (time step) approximation - assuming roughly 60 FPS (using CAR_ANIMATION_INTERVAL)
-                 const dt = CAR_ANIMATION_INTERVAL / 1000; // Time in seconds
-                 // The speed used here should ideally be the actual speed *over ground*,
-                 // which is distanceMoved / dt. For simplicity, we use currentSpeed (pixels/frame).
-                 // We need a conversion factor if currentSpeed isn't in pixels/second.
-                 // Let's assume currentSpeed needs to be scaled by FPS (approx 1000/CAR_ANIMATION_INTERVAL)
-                 const speedPixelsPerSecond = currentSpeed * (1000 / CAR_ANIMATION_INTERVAL);
-                 deltaAngle = (speedPixelsPerSecond * Math.tan(currentWheelAngle) / WHEELBASE) * dt;
-                 // Alternative: Use distanceMoved directly if dt is tricky
-                 // deltaAngle = (distanceMoved / dt * Math.tan(currentWheelAngle) / WHEELBASE) * dt; -> simplifies to:
-                 // deltaAngle = (distanceMoved * Math.tan(currentWheelAngle) / WHEELBASE);
+            if (isSkidding) {
+                // Apply rapid rotation based on steering input during skid
+                deltaAngle = steeringAngle * SKID_TURN_RATE_MULTIPLIER; 
+            } else {
+                // Use normal kinematic model when not skidding
+                if (Math.abs(currentWheelAngle) > 0.01 && WHEELBASE > 0) { 
+                    const dt = CAR_ANIMATION_INTERVAL / 1000; 
+                    const speedPixelsPerSecond = currentSpeed * (1000 / CAR_ANIMATION_INTERVAL);
+                    deltaAngle = (speedPixelsPerSecond * Math.tan(currentWheelAngle) / WHEELBASE) * dt;
+                }
             }
-            // Apply the change in angle
             currentCarAngle += deltaAngle;
-            // Keep angle within [-PI, PI]
-            currentCarAngle = ((currentCarAngle + Math.PI) % (2 * Math.PI)) - Math.PI;
+            currentCarAngle = ((currentCarAngle + Math.PI) % (2 * Math.PI)) - Math.PI; // Normalize
 
 
             // --- Fuel Check ---
@@ -1693,7 +1699,8 @@
             // Higher threshold for deltaAngle, maybe combine with speed?
             const turnRateThreshold = 0.03; // Radians change per frame threshold (adjust)
             const speedThreshold = CAR_PIXEL_SPEED * 0.5; // Minimum speed to screech
-            const shouldBeScreeching = Math.abs(deltaAngle) > turnRateThreshold && currentSpeed > speedThreshold;
+            // Force screeching if skidding, otherwise use normal logic
+            const shouldBeScreeching = isSkidding || (Math.abs(deltaAngle) > turnRateThreshold && currentSpeed > speedThreshold);
 
             // Check if screeching just started
             if (shouldBeScreeching && !isScreeching) {
