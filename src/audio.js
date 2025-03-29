@@ -13,10 +13,10 @@ function initAudio() {
 
 function playHonk(durations = [0.3], pauses = [0]) {
     if (!audioCtx) {
-      return;
+        return;
     }
 
-    let {currentTime} = audioCtx;
+    let { currentTime } = audioCtx;
 
     // Ensure durations and pauses arrays are the same length
     const length = Math.max(durations.length, pauses.length);
@@ -41,8 +41,8 @@ function playHonk(durations = [0.3], pauses = [0]) {
 
         // Set frequencies (using a minor third interval for a classic horn sound)
         const baseFreq = 400;
-        osc1.type = 'sine';
-        osc2.type = 'sine';
+        osc1.type = 'triangle';
+        osc2.type = 'square';
         osc1.frequency.setValueAtTime(baseFreq, startTime);
         osc2.frequency.setValueAtTime(baseFreq * 1.189207115, startTime); // Minor third up
 
@@ -53,8 +53,8 @@ function playHonk(durations = [0.3], pauses = [0]) {
         // Create a slight attack and release
         gain1.gain.linearRampToValueAtTime(0.08, startTime + 0.05);
         gain2.gain.linearRampToValueAtTime(0.06, startTime + 0.05);
-        gain1.gain.exponentialRampToValueAtTime(0.0001, startTime + durations[i]);
-        gain2.gain.exponentialRampToValueAtTime(0.0001, startTime + durations[i]);
+        gain1.gain.exponentialRampToValueAtTime(0.0002, startTime + durations[i]);
+        gain2.gain.exponentialRampToValueAtTime(0.0002, startTime + durations[i]);
 
         // Start and stop both oscillators
         osc1.start(startTime);
@@ -70,7 +70,7 @@ function playHonk(durations = [0.3], pauses = [0]) {
 function playSound(type, pitchFactor = 0) {
     initAudio();
     if (!audioCtx) {
-      return;
+        return;
     }
 
     // Resume context if suspended
