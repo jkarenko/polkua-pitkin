@@ -12,9 +12,11 @@ function initAudio() {
 }
 
 function playHonk(durations = [0.3], pauses = [0]) {
-    if (!audioCtx) return;
+    if (!audioCtx) {
+      return;
+    }
 
-    let currentTime = audioCtx.currentTime;
+    let {currentTime} = audioCtx;
 
     // Ensure durations and pauses arrays are the same length
     const length = Math.max(durations.length, pauses.length);
@@ -67,7 +69,9 @@ function playHonk(durations = [0.3], pauses = [0]) {
 
 function playSound(type, pitchFactor = 0) {
     initAudio();
-    if (!audioCtx) return;
+    if (!audioCtx) {
+      return;
+    }
 
     // Resume context if suspended
     if (audioCtx.state === 'suspended') {
