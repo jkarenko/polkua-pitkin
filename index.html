@@ -173,7 +173,7 @@
             z-index: 101;
             display: flex;
             flex-direction: column;
-            overflow: hidden; /* Prevent body scroll when touching sidebar */
+            overflow: hidden;
         }
         .sidebar.right {
             right: 0;
@@ -205,14 +205,14 @@
         }
         .sidebar-content {
             flex-grow: 1;
-            overflow-y: scroll;
+            overflow-y: scroll; /* Must be scroll, not auto */
+            overflow-x: hidden; /* Prevent horizontal scroll */
             padding: 10px;
             display: flex;
             flex-direction: column;
             gap: 10px;
             -webkit-overflow-scrolling: touch; /* Enable momentum scrolling */
-            overscroll-behavior: contain; /* Prevent scroll chaining */
-            touch-action: pan-y; /* Allow only vertical touch scrolling */
+            overscroll-behavior: contain;
         }
         .thumbnail-container {
             border: 1px solid #ccc;
@@ -226,8 +226,9 @@
             position: relative;
             transition: box-shadow 0.2s, transform 0.2s;
             -webkit-tap-highlight-color: transparent;
-            touch-action: pan-y; /* Change back to pan-y */
+            touch-action: pan-y; /* Allow vertical scrolling */
             pointer-events: auto;
+            user-select: none; /* Prevent text selection while scrolling */
         }
         .thumbnail-container:hover {
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
@@ -286,7 +287,7 @@
         }
 
         // Add a class to prevent body scroll when sidebar is open
-        body.sidebar-open {
+        .body-sidebar-open {
             overflow: hidden;
             position: fixed;
             width: 100%;
@@ -1953,12 +1954,12 @@
         function openSidebar() {
             populateSavedCoursesSidebar(); // Load content when opening
             savedCoursesSidebar.classList.add('visible');
-            document.body.classList.add('sidebar-open'); // Prevent body scroll
+            document.body.classList.add('body-sidebar-open'); // Updated class name
         }
 
         function closeSidebar() {
             savedCoursesSidebar.classList.remove('visible');
-            document.body.classList.remove('sidebar-open'); // Re-enable body scroll
+            document.body.classList.remove('body-sidebar-open'); // Updated class name
         }
 
         function showTrashCan() {
@@ -2084,32 +2085,6 @@
                     return;
                 }
 
-                // Track scroll state
-                let isScrolling = false;
-                let startY = 0;
-                let currentY = 0;
-                let startScrollTop = 0;
-
-                // Add touch handlers to sidebar content
-                sidebarContent.addEventListener('touchstart', (e) => {
-                    isScrolling = true;
-                    startY = e.touches[0].pageY;
-                    currentY = startY;
-                    startScrollTop = sidebarContent.scrollTop;
-                }, { passive: true });
-
-                sidebarContent.addEventListener('touchmove', (e) => {
-                    if (!isScrolling) return;
-                    
-                    currentY = e.touches[0].pageY;
-                    const deltaY = startY - currentY;
-                    sidebarContent.scrollTop = startScrollTop + deltaY;
-                }, { passive: true });
-
-                sidebarContent.addEventListener('touchend', () => {
-                    isScrolling = false;
-                }, { passive: true });
-
                 savedCourses.forEach(course => {
                     if (!course || !course.id || !course.player1Path) {
                         console.warn("Skipping invalid course data:", course);
@@ -2121,19 +2096,19 @@
                     container.draggable = true;
                     container.dataset.courseId = course.id;
 
-                    // Modify thumbnail touch handling
+                    // Improved touch handling
                     let touchStartTime = 0;
                     let touchStartX = 0;
                     let touchStartY = 0;
                     let isTapping = false;
+                    let isScrolling = false;
 
                     container.addEventListener('touchstart', (e) => {
                         touchStartTime = Date.now();
                         touchStartX = e.touches[0].clientX;
                         touchStartY = e.touches[0].pageY;
                         isTapping = true;
-                        
-                        // Don't stop propagation - let the parent handle scrolling
+                        isScrolling = false;
                     }, { passive: true });
 
                     container.addEventListener('touchmove', (e) => {
@@ -2144,19 +2119,25 @@
                         const deltaX = Math.abs(touchCurrentX - touchStartX);
                         const deltaY = Math.abs(touchCurrentY - touchStartY);
 
-                        // If horizontal movement is greater than vertical, might be trying to drag
-                        if (deltaX > deltaY && deltaX > 10) {
+                        // If vertical movement is greater, it's probably a scroll
+                        if (deltaY > deltaX && deltaY > 10) {
+                            isScrolling = true;
                             isTapping = false;
-                            // Here you could initiate drag behavior
+                        }
+                        // If horizontal movement is greater, might be trying to drag
+                        else if (deltaX > deltaY && deltaX > 10) {
+                            isTapping = false;
+                            // Could initiate drag here if needed
                         }
                     }, { passive: true });
 
                     container.addEventListener('touchend', (e) => {
+                        if (isScrolling) return; // Don't handle taps if we were scrolling
                         if (!isTapping) return;
                         
                         const touchEndTime = Date.now();
                         const touchEndX = e.changedTouches[0].clientX;
-                        const touchEndY = e.changedTouches[0].clientY;
+                        const touchEndY = e.changedTouches[0].pageY;
                         
                         const touchDuration = touchEndTime - touchStartTime;
                         const touchDistance = Math.sqrt(
@@ -2172,7 +2153,7 @@
                         isTapping = false;
                     }, { passive: true });
 
-                    // Rest of your container setup code...
+                    // Rest of the container setup...
                     const canvasEl = document.createElement('canvas');
                     canvasEl.className = 'thumbnail-canvas';
                     canvasEl.width = THUMBNAIL_WIDTH;
@@ -2189,7 +2170,7 @@
                     // Draw after appending
                     drawThumbnail(canvasEl, course.player1Path);
 
-                    // Enhanced drag handlers
+                    // Drag handlers
                     container.addEventListener('dragstart', (e) => {
                         e.target.classList.add('dragging');
                         handleThumbnailDragStart(e);
@@ -2199,20 +2180,12 @@
                         e.target.classList.remove('dragging');
                         handleThumbnailDragEnd(e);
                     });
-
-                    // Add touch-action: none to prevent scrolling while dragging
-                    container.style.touchAction = 'none';
                 });
 
             } catch (error) {
                 console.error("Error loading saved courses for sidebar:", error);
                 sidebarContent.innerHTML = '<p style="color: red;">Radan lataus epäonnistui.</p>';
             }
-
-            // Add touch handler to prevent bounce
-            sidebarContent.addEventListener('touchstart', () => {
-                scrollToPreventBounce(sidebarContent);
-            }, { passive: true });
         }
 
         // --- Course Loading/Deleting ---
