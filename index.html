@@ -147,9 +147,11 @@
         <h1>Pääsit Maaliin!</h1>
         <h2 id="scoreDisplay">Pisteet: 0</h2>
         <p id="scoreMessage">Hyvin pelattu!</p>
+        <p id="newRecordMessage" style="color: yellow; font-weight: bold; display: none;">Teit uuden ennätyksen!</p>
         <div class="game-screen-buttons">
             <button id="victoryReplayButton" class="game-button replay-button">Yritä Uudelleen <span class="emoji">🚗</span></button>
             <button id="victoryNewGameButton" class="game-button new-game-button">Luo Uusi Peli <span class="emoji">🛣️</span></button>
+            <button id="saveCourseButton">Tallenna rata</button>
         </div>
     </div>
     
@@ -227,6 +229,9 @@
         let defeatFlagged = false;
         let decorations = [];
         let tireMarks = [];
+        // Add these state variables for session high score tracking
+        let currentSessionHighScore = 0;
+        let currentSessionBestPlayer2Path = [];
 
         // Car state
         let carProgress = 0;
@@ -608,11 +613,12 @@
              startMarker = { ...player1Path[0], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
              endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
 
-             // Create smoothed path for car to follow
-             // smoothedPath = smoothPath(player1Path);
-             smoothedPath = player1Path;
+             // Create smoothed path for car to follow -- **Ensure this represents the P1 path structure**
+             // smoothedPath = smoothPath(player1Path); // Option 1: Use actual smoothed P1 path
+             smoothedPath = player1Path; // Option 2: Use the raw P1 path (current implementation)
+                                        // This is the path that will be hashed and saved. DO NOT MODIFY LATER.
 
-             // Calculate progress markers
+             // Calculate progress markers based on the original player1Path length
              progressMarkers = [];
              for (let i = 0; i <= 10; i++) { // 10 segments (0% to 100%)
                  const targetProgress = i * PROGRESS_INTERVAL;
@@ -655,45 +661,63 @@
         }
 
         function getPointAlongPath(progress, path) {
-            if (path.length < 2) return path[0];
-            
-            // Use smoothed path for car movement
-            const targetPath = path === player2Path ? smoothedPath : path;
-            if (!targetPath || targetPath.length < 2) return path[0];
-            
+            // Always calculate based on the specific 'path' provided
+            if (!path || path.length < 2) return path[0] || {x: 0, y: 0}; // Handle empty or single-point path
+
+            // Calculate total length of the *provided* path for accurate progress mapping
+            let pathTotalLength = calculatePathLength(path);
+            if (pathTotalLength === 0) return path[0]; // Avoid division by zero
+
+            let targetDistance = progress * pathTotalLength;
             let accumulatedLength = 0;
-            for (let i = 0; i < targetPath.length - 1; i++) {
-                const segmentLength = dist(targetPath[i], targetPath[i + 1]);
-                if (accumulatedLength + segmentLength >= progress * player1TotalLength) {
-                    const t = (progress * player1TotalLength - accumulatedLength) / segmentLength;
+
+            for (let i = 0; i < path.length - 1; i++) {
+                const segmentLength = dist(path[i], path[i + 1]);
+                if (accumulatedLength + segmentLength >= targetDistance || i === path.length - 2) {
+                    // If segmentLength is 0, t calculation fails, return start point of segment
+                    if (segmentLength === 0) return path[i];
+                    // Ensure progress doesn't exceed 1 due to float precision
+                    const clampedTarget = Math.min(targetDistance, pathTotalLength);
+                    const t = (clampedTarget - accumulatedLength) / segmentLength;
+                    // Clamp t between 0 and 1
+                    const clampedT = Math.max(0, Math.min(1, t));
                     return {
-                        x: targetPath[i].x + t * (targetPath[i + 1].x - targetPath[i].x),
-                        y: targetPath[i].y + t * (targetPath[i + 1].y - targetPath[i].y)
+                        x: path[i].x + clampedT * (path[i + 1].x - path[i].x),
+                        y: path[i].y + clampedT * (path[i + 1].y - path[i].y)
                     };
                 }
                 accumulatedLength += segmentLength;
             }
-            return targetPath[targetPath.length - 1];
+            // Fallback: return the last point if progress is 1 or more
+            return path[path.length - 1];
         }
 
         function getDirectionAlongPath(progress, path) {
-            if (path.length < 2) return { x: 0, y: 0 };
-            
-            // Use smoothed path for car movement
-            const targetPath = path === player2Path ? smoothedPath : path;
-            if (!targetPath || targetPath.length < 2) return { x: 0, y: 0 };
-            
+            // Always calculate based on the specific 'path' provided
+            if (!path || path.length < 2) return { x: 1, y: 0 }; // Default direction if path is too short
+
+            // Calculate total length of the *provided* path
+            let pathTotalLength = calculatePathLength(path);
+            if (pathTotalLength === 0) return { x: 1, y: 0 }; // Default direction
+
+            let targetDistance = progress * pathTotalLength;
             let accumulatedLength = 0;
-            for (let i = 0; i < targetPath.length - 1; i++) {
-                const segmentLength = dist(targetPath[i], targetPath[i + 1]);
-                if (accumulatedLength + segmentLength >= progress * player1TotalLength) {
-                    const t = (progress * player1TotalLength - accumulatedLength) / segmentLength;
+
+            for (let i = 0; i < path.length - 1; i++) {
+                const segmentLength = dist(path[i], path[i + 1]);
+                // Find the segment where the progress point lies
+                if (accumulatedLength + segmentLength >= targetDistance || i === path.length - 2) {
                     const direction = {
-                        x: targetPath[i + 1].x - targetPath[i].x,
-                        y: targetPath[i + 1].y - targetPath[i].y
+                        x: path[i + 1].x - path[i].x,
+                        y: path[i + 1].y - path[i].y
                     };
                     // Normalize direction
                     const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+                    // If segment length is zero, try the next segment or return default
+                    if (length === 0) {
+                        if (i < path.length - 2) continue; // Try next segment if possible
+                        else return { x: 1, y: 0 }; // Default at the very end
+                    }
                     return {
                         x: direction.x / length,
                         y: direction.y / length
@@ -701,18 +725,81 @@
                 }
                 accumulatedLength += segmentLength;
             }
-            return { x: 0, y: 0 };
+            // Fallback: return direction of the last segment or default
+             if (path.length >= 2) {
+                 const lastSegmentDirection = {
+                     x: path[path.length - 1].x - path[path.length - 2].x,
+                     y: path[path.length - 1].y - path[path.length - 2].y
+                 };
+                 const length = Math.sqrt(lastSegmentDirection.x * lastSegmentDirection.x + lastSegmentDirection.y * lastSegmentDirection.y);
+                 if (length > 0) {
+                     return { x: lastSegmentDirection.x / length, y: lastSegmentDirection.y / length };
+                 }
+             }
+            return { x: 1, y: 0 }; // Absolute fallback
         }
 
-        function drawVictoryScreen(score) {
+        function showVictoryScreen(score) {
             const victoryScreen = document.getElementById('victoryScreen');
             const scoreDisplay = document.getElementById('scoreDisplay');
             const scoreMessage = document.getElementById('scoreMessage');
-            
-            // Update content
+            const saveButton = document.getElementById('saveCourseButton');
+            const newRecordMsg = document.getElementById('newRecordMessage'); // Get the new message element
+
+            let newRecordSet = false; // Flag to track if a new record was automatically saved
+
+            // Always update session high score if this run was better *for the session*
+            if (score > currentSessionHighScore) {
+                currentSessionHighScore = score;
+                currentSessionBestPlayer2Path = [...player2Path];
+                console.log(`New session high score for this path: ${currentSessionHighScore}`);
+            }
+
+            // Update display content
             scoreDisplay.textContent = `Pisteet: ${score}`;
             scoreMessage.textContent = getScoreMessage(score);
-            
+            newRecordMsg.style.display = 'none'; // Hide message initially
+            saveButton.style.display = 'none'; // Hide save button initially
+
+            // Check localStorage for existing course and handle auto-update
+            try {
+                const courseId = hashPath(smoothedPath);
+                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
+
+                if (existingCourseIndex !== -1) {
+                    // Course exists
+                    const existingCourse = savedCourses[existingCourseIndex];
+                    if (currentSessionHighScore > existingCourse.highScore) {
+                        // --- Auto-update high score ---
+                        existingCourse.highScore = currentSessionHighScore;
+                        existingCourse.highScorePlayer2Path = currentSessionBestPlayer2Path;
+                        savedCourses[existingCourseIndex] = existingCourse; // Update the object in the array
+                        localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                        console.log(`Course high score automatically updated: ${existingCourse.name} to ${currentSessionHighScore}`);
+                        newRecordSet = true; // Set flag for new record message
+                        // --- Button remains hidden ---
+                    } else {
+                        // Course exists, but score is not better
+                        // --- Button remains hidden ---
+                        console.log(`Course ${courseId} already saved, score not improved.`);
+                    }
+                } else {
+                    // Course does not exist yet - SHOW manual save button
+                    saveButton.textContent = 'Tallenna rata';
+                    saveButton.disabled = false;
+                    saveButton.style.display = 'inline-block'; // Explicitly show the button
+                }
+            } catch (error) {
+                console.error("Error accessing/updating saved courses:", error);
+                // --- Button remains hidden on error ---
+            }
+
+            // Show the "New Record" message if applicable
+            if (newRecordSet) {
+                newRecordMsg.style.display = 'block';
+            }
+
             // Display the screen
             victoryScreen.style.display = 'flex';
         }
@@ -898,23 +985,26 @@
             
             gameState = 'P1_DRAWING';
             player1Path = [];
-            smoothedPath = []; // Clear smoothed path
+            smoothedPath = [];
             player2Path = [];
             isDrawing = false;
             player1TotalLength = 0;
             lastPlayedProgressMilestone = 0;
             startMarker = null;
             endMarker = null;
-            progressMarkers = []; // Clear progress markers
-            carTrail = []; // Clear car trail
-            tireMarks = []; // <--- Clear tire marks
-            currentPathLength = 0; // Reset path length
+            progressMarkers = [];
+            currentActiveSegmentIndex = 0;
             maxAllowedPathLength = 0; // Reset max allowed path length
+            currentPathLength = 0;
             fuelConsumed = 0; // Reset fuel consumed
             previousCarPosition = null; // Reset previous car position tracking
             defeatFlagged = false; // Reset defeat flag
             carConfig = null; // Reset car configuration
             decorations = []; // Clear decorations array
+            tireMarks = []; // Clear tire marks
+            // Reset session high score when starting a completely new game
+            currentSessionHighScore = 0;
+            currentSessionBestPlayer2Path = [];
             doneButton.style.display = 'inline-block';
             resetButton.style.display = 'none';
             statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
@@ -1054,8 +1144,6 @@
                         carPosition = { ...player2Path[0] };
                         carAngle = 0;
                         carConfig = createCar(); // Create new car configuration with random color
-                        // Create smoothed path for car to follow
-                        smoothedPath = smoothPath(player2Path);
                         animateCar();
                     } else {
                         playSound('alarm');
@@ -1071,22 +1159,27 @@
         }
 
         function calculateScore() {
-            if (player2Path.length < 2) return 0;
-            
+            if (!player2Path || player2Path.length < 2 || !smoothedPath || smoothedPath.length < 2) return 0; // Added check for smoothedPath
+
             let totalDistance = 0;
             let validPoints = 0;
-            
+
             // Sample points along Player 2's path
             for (let i = 0; i < player2Path.length; i++) {
                 const point = player2Path[i];
                 let minDistance = Infinity;
-                
-                // Find the closest point on Player 1's path
-                for (let j = 0; j < player1Path.length - 1; j++) {
-                    const dist = pointLineSegmentDistance(point, player1Path[j], player1Path[j + 1]);
+
+                // Find the closest point on the defined Player 1 course path (smoothedPath)
+                for (let j = 0; j < smoothedPath.length - 1; j++) {
+                    const dist = pointLineSegmentDistance(point, smoothedPath[j], smoothedPath[j + 1]);
                     minDistance = Math.min(minDistance, dist);
                 }
-                
+                 // Check distance to the last point of smoothedPath as well
+                 if (smoothedPath.length > 0) {
+                     minDistance = Math.min(minDistance, dist(point, smoothedPath[smoothedPath.length - 1]));
+                 }
+
+
                 // Only count points that are within the threshold
                 if (minDistance <= SCORE_THRESHOLD) {
                     totalDistance += minDistance;
@@ -1159,6 +1252,7 @@
         // Add event listeners for game screens
         document.getElementById('victoryReplayButton').addEventListener('click', replayLevel);
         document.getElementById('victoryNewGameButton').addEventListener('click', resetGame);
+        document.getElementById('saveCourseButton').addEventListener('click', saveCurrentCourse); // Add listener for the new button
         document.getElementById('defeatReplayButton').addEventListener('click', replayLevel);
         document.getElementById('defeatNewGameButton').addEventListener('click', resetGame);
 
@@ -1253,55 +1347,69 @@
                     playHonk([0.1, 0.6], [0.1]);
                     const score = calculateScore();
                     statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
-                    drawVictoryScreen(score);
+                    showVictoryScreen(score);
                 }
                 redrawAll(); // Redraw one last time to show final state
                 return; // Stop the animation loop
             }
 
-            // --- Car Movement Calculation (existing logic) ---
-            const currentCurvature = calculateCurvature(carProgress, player2Path);
+            // --- Car Movement Calculation ---
+            // Calculate curvature, speed etc. based on the path the car is ACTUALLY following (player2Path)
+            // Note: carProgress still represents progress along the conceptual P1 path length for timing/finish check
+            const posOnP2Path = getPointAlongPath(carProgress, player2Path); // Find equivalent point on P2 path
+            // Need a way to map carProgress (0-1 along P1 length) to equivalent progress along P2 path length
+            // For simplicity, let's continue using carProgress for curvature/direction *along P2's path shape*
+            // This assumes P1 and P2 paths have roughly similar progress mapping, which might not be perfect.
+            // A more accurate way would involve calculating car's actual distance travelled on P2 path.
+
+            const currentCurvature = calculateCurvature(carProgress, player2Path); // Curvature of the P2 path
             const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
-            const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path);
+            const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path); // Upcoming curvature on P2 path
             const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
             let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
 
-            const distanceToFinish = 1 - carProgress;
+            // --- (Speed adjustment near finish - might need rethinking if P1/P2 lengths differ significantly) ---
+            const distanceToFinish = 1 - carProgress; // Based on P1 path progress
             if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
-                const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
-                const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
-                targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
+                 const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
+                 const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
+                 targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
             }
+            // ---
 
             const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
 
             if (targetSpeed > currentSpeed) {
-                const speedDiff = targetSpeed - currentSpeed;
-                const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED);
-                currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
+                 const speedDiff = targetSpeed - currentSpeed;
+                 const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED);
+                 currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
             } else {
-                currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
+                 currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
             }
 
-            const nextProgress = carProgress + (currentSpeed / player1TotalLength);
+            // Calculate progress increment based on speed relative to P1 path length
+            const progressIncrement = (currentSpeed / player1TotalLength);
+            const nextProgress = carProgress + progressIncrement;
+
+            // Get the next position ALONG THE P2 PATH based on the *calculated progress*
             const nextPos = getPointAlongPath(nextProgress, player2Path);
 
             // --- Fuel Consumption Update ---
-            // Calculate distance moved this frame and add to fuel consumed
             const distanceMoved = dist(carPosition, nextPos);
             fuelConsumed += distanceMoved;
 
             // --- Update Car State ---
-            previousCarPosition = { ...carPosition }; // Store current position before updating
+            previousCarPosition = { ...carPosition };
             carPosition = nextPos;
-            carProgress = nextProgress;
+            carProgress = nextProgress; // Update progress along the conceptual P1 path length
             carTrail.push({ ...carPosition });
 
-            // --- Update Car Angle and Sounds (Modified logic) ---
-            const direction = getDirectionAlongPath(carProgress, player2Path);
+            // --- Update Car Angle and Sounds ---
+            const direction = getDirectionAlongPath(carProgress, player2Path); // Get direction from P2 path shape
             const targetCarAngle = Math.atan2(direction.y, direction.x);
             const angleDiff = targetCarAngle - currentCarAngle;
             const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
+            currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
 
             // Determine if the car should be screeching in this frame
             const shouldBeScreeching = Math.abs(normalizedDiff) > TURN_THRESHOLD;
@@ -1360,7 +1468,6 @@
 
             // Store current angle as previous for the next frame BEFORE updating it
             previousCarAngle = currentCarAngle;
-            currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
 
             if (!engineSound) {
                 engineSound = playSound('engine');
@@ -1369,9 +1476,81 @@
             }
 
             // --- Redraw and Continue Animation ---
-            redrawAll(); // Includes drawing the updated fuel gauge
+            redrawAll();
 
             carAnimationFrame = requestAnimationFrame(animateCar);
+        }
+
+        // --- Path Saving Logic ---
+
+        function saveCurrentCourse() {
+            // This function now ONLY handles the FIRST save of a course
+            const saveButton = document.getElementById('saveCourseButton');
+
+            if (!smoothedPath || smoothedPath.length < 2) {
+                console.error("Cannot save: No valid Player 1 path exists.");
+                alert("Rataa ei voi tallentaa, koska Pelaaja 1:n polkua ei ole piirretty kunnolla.");
+                return;
+            }
+            // Basic check for session score, though it might be 0 on first successful run
+             if (currentSessionHighScore <= 0 || !currentSessionBestPlayer2Path || currentSessionBestPlayer2Path.length < 2) {
+                 console.warn("Saving course with potentially zero score or missing P2 path for the session.");
+             }
+
+            const courseId = hashPath(smoothedPath);
+            const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+
+            const newCourseData = {
+                id: courseId,
+                name: courseName,
+                player1Path: smoothedPath,
+                highScore: currentSessionHighScore, // Save the best score from the session
+                highScorePlayer2Path: currentSessionBestPlayer2Path
+            };
+
+            try {
+                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
+
+                if (existingCourseIndex === -1) {
+                    // --- Add new course ---
+                    savedCourses.push(newCourseData);
+                    localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                    console.log(`Course saved for the first time: ${newCourseData.name}`, newCourseData);
+                    saveButton.textContent = 'Tallennettu!'; // Feedback for new save
+                    saveButton.disabled = true;
+                } else {
+                    // Course somehow already exists - this shouldn't happen if showVictoryScreen logic is correct
+                    // but handle defensively. Button should already be disabled in this case.
+                    console.warn(`Save button clicked, but course ${courseId} already exists.`);
+                    saveButton.textContent = 'Rata tallennettu'; // Reflect state
+                    saveButton.disabled = true;
+                }
+
+            } catch (error) {
+                console.error("Error saving new course to localStorage:", error);
+                alert("Radan tallentamisessa tapahtui virhe.");
+                saveButton.textContent = 'Tallennus epäonnistui';
+                saveButton.disabled = false; // Allow retry?
+            }
+        }
+
+        // Add these hashing functions
+        function simpleHash(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = char + (hash << 6) + (hash << 16) - hash;
+            }
+            // Convert to a positive hexadecimal string prefixed with 'h_'
+            return `h_${(hash >>> 0).toString(16)}`;
+        }
+
+        function hashPath(path) {
+            if (!path || path.length === 0) return 'h_empty';
+            // Stringify with fixed precision to handle floating point variations
+            const pathString = JSON.stringify(path.map(p => ({ x: p.x.toFixed(3), y: p.y.toFixed(3) })));
+            return simpleHash(pathString);
         }
 
     </script>
