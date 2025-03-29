@@ -390,6 +390,7 @@
         let currentSessionHighScore = 0;
         let currentSessionBestPlayer2Path = [];
         let draggedCourseId = null; // Track the ID of the course being dragged
+        let isFinishing = false; // Flag for the 1-second delay at the finish
 
         // Car state
         let carProgress = 0;
@@ -1062,8 +1063,9 @@
                  drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === 'P1_DRAWING');
             }
 
-            // 2. Draw the car trail if animating (behind decorations and car)
-             if (gameState === 'CAR_ANIMATING' && carTrail.length > 1) {
+            // 2. Draw the car trail if animating or finished (behind decorations and car)
+             // Draw the trail even when finished/showing score
+             if ((gameState === 'CAR_ANIMATING' || gameState === 'SHOWING_SCORE' || isFinishing) && carTrail.length > 1) {
                  ctx.beginPath();
                  ctx.moveTo(carTrail[0].x, carTrail[0].y);
                  for (let i = 1; i < carTrail.length; i++) {
@@ -1077,37 +1079,30 @@
              }
 
             // 2.5 Draw Tire Marks (after trail, before decorations/car)
-            ctx.strokeStyle = 'rgba(40, 40, 40, 0.7)'; // Dark semi-transparent color for lines
-            ctx.lineWidth = 3; // Width of the tire mark lines
-            ctx.lineCap = 'round'; // Make line ends rounded
-            tireMarks.forEach(mark => {
-                if (mark.start && mark.end) { // Ensure we have both points
-                    ctx.beginPath();
-                    ctx.moveTo(mark.start.x, mark.start.y);
-                    ctx.lineTo(mark.end.x, mark.end.y);
-                    ctx.stroke();
-                }
-            });
+            // Draw tire marks even when finished/showing score
+            if (gameState === 'CAR_ANIMATING' || gameState === 'SHOWING_SCORE' || isFinishing) {
+                ctx.strokeStyle = 'rgba(40, 40, 40, 0.7)'; // Dark semi-transparent color for lines
+                ctx.lineWidth = 3; // Width of the tire mark lines
+                ctx.lineCap = 'round'; // Make line ends rounded
+                tireMarks.forEach(mark => {
+                    if (mark.start && mark.end) { // Ensure we have both points
+                        ctx.beginPath();
+                        ctx.moveTo(mark.start.x, mark.start.y);
+                        ctx.lineTo(mark.end.x, mark.end.y);
+                        ctx.stroke();
+                    }
+                });
+            }
 
 
             // 3. Create a list of drawable items (decorations, P2 path, car)
             let drawableItems = [...decorations]; // Start with decorations
 
-            // Add P2 Path wrapper ONLY if P2 is drawing or waiting
-            if ((gameState === 'P2_DRAWING' || gameState === 'P2_WAITING') && player2Path.length > 0) {
-                drawableItems.push({
-                    getLowestY: () => {
-                        if (player2Path.length === 0) return -Infinity;
-                        return Math.max(...player2Path.map(p => p.y));
-                    },
-                    draw: (context) => {
-                        drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
-                    }
-                });
-            }
+            // Add P2 Path wrapper ONLY if P2 is drawing or waiting (NO LONGER NEEDED - Trail covers it)
+            // if ((gameState === 'P2_DRAWING' || gameState === 'P2_WAITING') && player2Path.length > 0) { ... } // Remove or comment out
 
-            // Add ONLY the Car sprite wrapper if animating (trail is drawn separately now)
-            if (gameState === 'CAR_ANIMATING' && carPosition) {
+            // Add ONLY the Car sprite wrapper if animating OR finished/showing score
+             if ((gameState === 'CAR_ANIMATING' || gameState === 'SHOWING_SCORE' || isFinishing) && carPosition) {
                  drawableItems.push({
                     getLowestY: () => {
                         const carHeight = CAR_CONSTANTS?.HEIGHT || 20;
@@ -1124,7 +1119,7 @@
             drawableItems = drawableItems.filter(item => item && typeof item.getLowestY === 'function' && typeof item.draw === 'function');
             drawableItems.sort((a, b) => a.getLowestY() - b.getLowestY());
 
-            // 5. Draw the sorted items (decorations, P2 path, car)
+            // 5. Draw the sorted items (decorations, car)
             drawableItems.forEach(item => item.draw(ctx));
 
             // 6. Draw UI elements last (on top of everything)
@@ -1165,6 +1160,7 @@
             fuelConsumed = 0; // Reset fuel consumed
             previousCarPosition = null; // Reset previous car position tracking
             defeatFlagged = false; // Reset defeat flag
+            isFinishing = false; // Reset finishing flag
             carConfig = null; // Reset car configuration
             decorations = []; // Clear decorations array
             tireMarks = []; // Clear tire marks
@@ -1477,6 +1473,7 @@
             fuelConsumed = 0; // Reset fuel consumed for replay
             previousCarPosition = null; // Reset previous car position tracking
             defeatFlagged = false; // Reset defeat flag
+            isFinishing = false; // Reset finishing flag
             carConfig = null; // Reset car configuration
             gameState = 'P2_WAITING';
             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
@@ -1504,6 +1501,56 @@
         }
 
         function animateCar() {
+            // --- Finish Line Check ---
+            // Check only if not already in the finishing delay phase
+            if (!isFinishing && carProgress >= 1) {
+                isFinishing = true; // Set the finishing flag
+                currentSpeed = 0; // Stop the car immediately
+
+                // Play honk sound immediately IF NOT defeated
+                if (!defeatFlagged) {
+                    playHonk([0.1, 0.6], [0.1]);
+                }
+
+                // Stop engine sound
+                if (engineSound) {
+                    engineSound.mainOsc.stop();
+                    engineSound.varOsc.stop();
+                    engineSound = null;
+                }
+
+                // Cancel future animation frames
+                if (carAnimationFrame) {
+                    cancelAnimationFrame(carAnimationFrame);
+                    carAnimationFrame = null;
+                }
+
+                // Perform one final redraw to show the car at the finish line
+                redrawAll();
+
+                // Set timeout to show the appropriate screen after 1 second
+                setTimeout(() => {
+                    gameState = 'SHOWING_SCORE'; // New state to indicate score is shown
+                    if (defeatFlagged) {
+                        drawFailState();
+                    } else {
+                        // playHonk([0.1, 0.6], [0.1]); // <-- REMOVE from here
+                        const score = calculateScore();
+                        statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
+                        showVictoryScreen(score);
+                        // No redraw needed here, screen appears over canvas
+                    }
+                }, 1000); // 1000ms delay
+
+                return; // Exit the function, animation loop is stopped
+            }
+
+            // Exit if we are already in the finishing delay or showing score
+             if (isFinishing || gameState === 'SHOWING_SCORE') {
+                 return;
+             }
+
+
             // Initialize previous position on the first frame
             if (previousCarPosition === null) {
                 previousCarPosition = { ...carPosition };
@@ -1517,31 +1564,6 @@
                 playSound('alarm');
                 playSound('alarm');
                 statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
-            }
-
-            // --- Finish Line Check ---
-            if (carProgress >= 1) {
-                gameState = 'P2_FINISHED';
-                if (carAnimationFrame) {
-                    cancelAnimationFrame(carAnimationFrame);
-                    carAnimationFrame = null; // Ensure it's cleared
-                }
-                if (engineSound) {
-                    engineSound.mainOsc.stop();
-                    engineSound.varOsc.stop();
-                    engineSound = null;
-                }
-
-                if (defeatFlagged) {
-                    drawFailState();
-                } else {
-                    playHonk([0.1, 0.6], [0.1]);
-                    const score = calculateScore();
-                    statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
-                    showVictoryScreen(score);
-                }
-                redrawAll(); // Redraw one last time to show final state
-                return; // Stop the animation loop
             }
 
             // --- Car Movement Calculation ---
@@ -1669,7 +1691,10 @@
             // --- Redraw and Continue Animation ---
             redrawAll();
 
-            carAnimationFrame = requestAnimationFrame(animateCar);
+            // Request next frame only if not finishing
+            if (!isFinishing) {
+                carAnimationFrame = requestAnimationFrame(animateCar);
+            }
         }
 
         // --- Path Saving Logic ---
