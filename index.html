@@ -210,9 +210,9 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
-            -webkit-overflow-scrolling: touch;
-            overscroll-behavior: contain;
-            touch-action: pan-y; /* Change back to pan-y */
+            -webkit-overflow-scrolling: touch; /* Enable momentum scrolling */
+            overscroll-behavior: contain; /* Prevent scroll chaining */
+            touch-action: pan-y; /* Allow only vertical touch scrolling */
         }
         .thumbnail-container {
             border: 1px solid #ccc;
@@ -283,6 +283,14 @@
                 box-shadow: none;
                 transform: none;
             }
+        }
+
+        // Add a class to prevent body scroll when sidebar is open
+        body.sidebar-open {
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
         }
     </style>
 </head>
@@ -1945,10 +1953,12 @@
         function openSidebar() {
             populateSavedCoursesSidebar(); // Load content when opening
             savedCoursesSidebar.classList.add('visible');
+            document.body.classList.add('sidebar-open'); // Prevent body scroll
         }
 
         function closeSidebar() {
             savedCoursesSidebar.classList.remove('visible');
+            document.body.classList.remove('sidebar-open'); // Re-enable body scroll
         }
 
         function showTrashCan() {
@@ -2048,6 +2058,23 @@
             }
         }
 
+        // Add this function to prevent bounce scrolling
+        function scrollToPreventBounce(element) {
+            const {scrollTop, offsetHeight, scrollHeight} = element;
+            
+            // If at top, bump down 1px
+            if (scrollTop <= 0) {
+                element.scrollTo(0, 1);
+                return;
+            }
+            
+            // If at bottom, bump up 1px
+            if (scrollTop + offsetHeight >= scrollHeight) {
+                element.scrollTo(0, scrollHeight - offsetHeight - 1);
+            }
+        }
+
+        // Update the populateSavedCoursesSidebar function to add the touch handler
         function populateSavedCoursesSidebar() {
             sidebarContent.innerHTML = '';
             try {
@@ -2181,6 +2208,11 @@
                 console.error("Error loading saved courses for sidebar:", error);
                 sidebarContent.innerHTML = '<p style="color: red;">Radan lataus epäonnistui.</p>';
             }
+
+            // Add touch handler to prevent bounce
+            sidebarContent.addEventListener('touchstart', () => {
+                scrollToPreventBounce(sidebarContent);
+            }, { passive: true });
         }
 
         // --- Course Loading/Deleting ---
