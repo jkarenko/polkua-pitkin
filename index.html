@@ -165,15 +165,15 @@
             position: fixed;
             top: 0;
             height: 100%;
-            width: 280px; /* Adjust width as needed */
+            width: 280px;
             background-color: rgba(240, 240, 240, 0.95);
             box-shadow: -2px 0 5px rgba(0,0,0,0.2);
-            transform: translateX(100%); /* Start hidden off-screen */
+            transform: translateX(100%);
             transition: transform 0.3s ease-in-out;
             z-index: 101;
             display: flex;
             flex-direction: column;
-            touch-action: pan-y; /* Allow vertical scrolling initiated anywhere in sidebar */
+            overflow: hidden; /* Prevent body scroll when touching sidebar */
         }
         .sidebar.right {
             right: 0;
@@ -205,13 +205,14 @@
         }
         .sidebar-content {
             flex-grow: 1;
-            overflow-y: auto; /* This element will actually scroll */
+            overflow-y: scroll; /* Change from auto to scroll */
             padding: 10px;
             display: flex;
             flex-direction: column;
-            gap: 10px; /* Spacing between thumbnails */
-            /* touch-action: pan-y; */ /* Can optionally remove this now, but leaving it is fine */
-            -webkit-overflow-scrolling: touch; /* Enable momentum scrolling on iOS */
+            gap: 10px;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain; /* Prevent scroll chaining */
+            touch-action: none; /* Remove default touch actions */
         }
         .thumbnail-container {
             border: 1px solid #ccc;
@@ -221,10 +222,12 @@
             cursor: grab;
             display: flex;
             flex-direction: column;
-            align-items: center; /* Center canvas */
-            position: relative; /* For positioning stars */
+            align-items: center;
+            position: relative;
             transition: box-shadow 0.2s, transform 0.2s;
-            -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none; /* Remove default touch actions */
+            user-select: none;
         }
         .thumbnail-container:hover {
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
@@ -272,6 +275,14 @@
         .trash-can.active-drop {
             background-color: rgba(255, 0, 0, 0.9);
             transform: scale(1.1);
+        }
+
+        /* Remove hover effect on touch devices */
+        @media (hover: none) {
+            .thumbnail-container:hover {
+                box-shadow: none;
+                transform: none;
+            }
         }
     </style>
 </head>
@@ -2001,13 +2012,30 @@
         }
 
         function populateSavedCoursesSidebar() {
-            sidebarContent.innerHTML = ''; // Clear existing content
+            sidebarContent.innerHTML = '';
             try {
                 const savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
                 if (savedCourses.length === 0) {
                     sidebarContent.innerHTML = '<p style="text-align: center; color: #666;">Ei tallennettuja ratoja.</p>';
                     return;
                 }
+
+                // Add touch event handlers to sidebar content
+                const sidebarContent = document.getElementById('sidebarContent');
+                let startY = 0;
+                let startScrollTop = 0;
+
+                sidebarContent.addEventListener('touchstart', (e) => {
+                    startY = e.touches[0].pageY;
+                    startScrollTop = sidebarContent.scrollTop;
+                    e.stopPropagation(); // Prevent other touch handlers
+                }, { passive: true });
+
+                sidebarContent.addEventListener('touchmove', (e) => {
+                    const deltaY = startY - e.touches[0].pageY;
+                    sidebarContent.scrollTop = startScrollTop + deltaY;
+                    e.stopPropagation(); // Prevent other touch handlers
+                }, { passive: true });
 
                 savedCourses.forEach(course => {
                     if (!course || !course.id || !course.player1Path) {
@@ -2037,7 +2065,8 @@
                         touchStartTime = Date.now();
                         touchStartX = e.touches[0].clientX;
                         touchStartY = e.touches[0].clientY;
-                    });
+                        e.stopPropagation(); // Stop event from bubbling to sidebar scroll handler
+                    }, { passive: true });
 
                     container.addEventListener('touchend', (e) => {
                         const touchEndTime = Date.now();
