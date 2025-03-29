@@ -1257,9 +1257,24 @@
                 const newSegmentLength = dist(lastPos, pos);
                 currentPathLength += newSegmentLength;
 
-                // Check if we've exceeded the fuel limit
-                if (currentPathLength > maxAllowedPathLength) {
-                    defeatFlagged = true; // Silently flag for defeat without any messages
+                // Check if we've exceeded the fuel limit using the same calculation as car animation
+                const progress = getProgressAlongPath(pos, player1Path);
+                const effectivePathLength = progress * player1TotalLength;
+                
+                if (effectivePathLength > maxAllowedPathLength) {
+                    defeatFlagged = true;
+                    isDrawing = false; // Stop drawing
+                    gameState = 'SHOWING_SCORE'; // Change state to show score
+                    statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
+                    playSound('alarm');
+                    playSound('alarm');
+                    
+                    // Add 1-second delay before showing defeat screen
+                    setTimeout(() => {
+                        drawFailState();
+                    }, 1000);
+                    
+                    return; // Exit the function without showing defeat screen immediately
                 }
                 
                 player2Path.push(pos);
@@ -1501,6 +1516,155 @@
         }
 
         function animateCar() {
+            // Exit if we are already in the finishing delay or showing score
+            if (isFinishing || gameState === 'SHOWING_SCORE') {
+                return;
+            }
+
+            // Initialize previous position on the first frame
+            if (previousCarPosition === null) {
+                previousCarPosition = { ...carPosition };
+                previousCarAngle = currentCarAngle; // Initialize previous angle too
+            }
+
+            // --- Car Movement Calculation ---
+            // Calculate curvature, speed etc. based on the path the car is ACTUALLY following (player2Path)
+            const posOnP2Path = getPointAlongPath(carProgress, player2Path);
+            const currentCurvature = calculateCurvature(carProgress, player2Path);
+            const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
+            const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path);
+            const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
+            let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
+
+            // --- (Speed adjustment near finish - might need rethinking if P1/P2 lengths differ significantly) ---
+            const distanceToFinish = 1 - carProgress;
+            if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
+                 const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
+                 const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
+                 targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
+            }
+
+            const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
+
+            if (targetSpeed > currentSpeed) {
+                 const speedDiff = targetSpeed - currentSpeed;
+                 const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED);
+                 currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
+            } else {
+                 currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
+            }
+
+            // Calculate next position BEFORE checking fuel
+            const progressIncrement = (currentSpeed / player1TotalLength);
+            const nextProgress = carProgress + progressIncrement;
+            const nextPos = getPointAlongPath(nextProgress, player2Path);
+            const distanceMoved = dist(carPosition, nextPos);
+
+            // --- Fuel Check ---
+            // Check if this next move would exceed fuel limit
+            if (fuelConsumed + distanceMoved > maxAllowedPathLength && !defeatFlagged) {
+                defeatFlagged = true;
+                playSound('alarm');
+                playSound('alarm');
+                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
+                
+                // Stop the car immediately
+                if (carAnimationFrame) {
+                    cancelAnimationFrame(carAnimationFrame);
+                    carAnimationFrame = null;
+                }
+                
+                // Stop engine sound
+                if (engineSound) {
+                    engineSound.mainOsc.stop();
+                    engineSound.varOsc.stop();
+                    engineSound = null;
+                }
+                
+                // Set timeout to show defeat screen after 1 second
+                setTimeout(() => {
+                    gameState = 'SHOWING_SCORE';
+                    drawFailState();
+                }, 1000);
+                
+                return; // Exit the animation function
+            }
+
+            // --- Update Car State ---
+            previousCarPosition = { ...carPosition };
+            carPosition = nextPos;
+            carProgress = nextProgress;
+            carTrail.push({ ...carPosition });
+            fuelConsumed += distanceMoved;
+
+            // --- Update Car Angle and Sounds ---
+            const direction = getDirectionAlongPath(carProgress, player2Path);
+            const targetCarAngle = Math.atan2(direction.y, direction.x);
+            const angleDiff = targetCarAngle - currentCarAngle;
+            const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
+            currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
+
+            // Determine if the car should be screeching in this frame
+            const shouldBeScreeching = Math.abs(normalizedDiff) > TURN_THRESHOLD;
+
+            // Check if screeching just started
+            if (shouldBeScreeching && !isScreeching) {
+                playSound('screech');
+            }
+
+            // Update the screeching state for the current frame
+            isScreeching = shouldBeScreeching;
+
+            // Add tire marks if currently screeching
+            if (isScreeching) {
+                // --- Add Tire Marks ---
+                const carWidth = CAR_CONSTANTS?.WIDTH || 15;
+                const carLength = CAR_CONSTANTS?.HEIGHT || 25;
+                const halfW = carWidth / 2;
+                const halfL = carLength / 2;
+
+                const tireOffsets = [
+                    { x: halfW, y: -halfL }, { x: -halfW, y: -halfL },
+                    { x: halfW, y: halfL }, { x: -halfW, y: halfL }
+                ];
+
+                const calculateTirePositions = (centerPos, angle) => {
+                    const cosA = Math.cos(angle);
+                    const sinA = Math.sin(angle);
+                    return tireOffsets.map(offset => {
+                        const rotatedX = offset.x * cosA - offset.y * sinA;
+                        const rotatedY = offset.x * sinA + offset.y * cosA;
+                        return { x: centerPos.x + rotatedX, y: centerPos.y + rotatedY };
+                    });
+                };
+
+                const currentTirePositions = calculateTirePositions(carPosition, currentCarAngle);
+                if (previousCarPosition && previousCarAngle !== undefined) {
+                    const previousTirePositions = calculateTirePositions(previousCarPosition, previousCarAngle);
+
+                    for (let i = 0; i < 4; i++) {
+                        if (distSq(previousTirePositions[i], currentTirePositions[i]) > 0.1) {
+                             tireMarks.push({
+                                start: previousTirePositions[i],
+                                end: currentTirePositions[i]
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Store current angle as previous for the next frame
+            previousCarAngle = currentCarAngle;
+
+            if (!engineSound) {
+                engineSound = playSound('engine');
+            } else {
+                engineSound.updateSpeed(currentSpeed, CAR_PIXEL_SPEED);
+            }
+
+            // --- Redraw and Continue Animation ---
+            redrawAll();
+
             // --- Finish Line Check ---
             // Check only if not already in the finishing delay phase
             if (!isFinishing && carProgress >= 1) {
@@ -1530,166 +1694,18 @@
 
                 // Set timeout to show the appropriate screen after 1 second
                 setTimeout(() => {
-                    gameState = 'SHOWING_SCORE'; // New state to indicate score is shown
+                    gameState = 'SHOWING_SCORE';
                     if (defeatFlagged) {
                         drawFailState();
                     } else {
-                        // playHonk([0.1, 0.6], [0.1]); // <-- REMOVE from here
                         const score = calculateScore();
                         statusDiv.textContent = `Pisteet: ${score} - ${getScoreMessage(score)}`;
                         showVictoryScreen(score);
-                        // No redraw needed here, screen appears over canvas
                     }
-                }, 1000); // 1000ms delay
+                }, 1000);
 
-                return; // Exit the function, animation loop is stopped
+                return;
             }
-
-            // Exit if we are already in the finishing delay or showing score
-             if (isFinishing || gameState === 'SHOWING_SCORE') {
-                 return;
-             }
-
-
-            // Initialize previous position on the first frame
-            if (previousCarPosition === null) {
-                previousCarPosition = { ...carPosition };
-                previousCarAngle = currentCarAngle; // Initialize previous angle too
-            }
-
-            // --- Fuel Check ---
-            // Check if fuel has run out BEFORE checking the finish line
-            if (fuelConsumed > maxAllowedPathLength && !defeatFlagged) {
-                defeatFlagged = true;
-                playSound('alarm');
-                playSound('alarm');
-                statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
-            }
-
-            // --- Car Movement Calculation ---
-            // Calculate curvature, speed etc. based on the path the car is ACTUALLY following (player2Path)
-            // Note: carProgress still represents progress along the conceptual P1 path length for timing/finish check
-            const posOnP2Path = getPointAlongPath(carProgress, player2Path); // Find equivalent point on P2 path
-            // Need a way to map carProgress (0-1 along P1 length) to equivalent progress along P2 path length
-            // For simplicity, let's continue using carProgress for curvature/direction *along P2's path shape*
-            // This assumes P1 and P2 paths have roughly similar progress mapping, which might not be perfect.
-            // A more accurate way would involve calculating car's actual distance travelled on P2 path.
-
-            const currentCurvature = calculateCurvature(carProgress, player2Path); // Curvature of the P2 path
-            const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
-            const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path); // Upcoming curvature on P2 path
-            const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
-            let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
-
-            // --- (Speed adjustment near finish - might need rethinking if P1/P2 lengths differ significantly) ---
-            const distanceToFinish = 1 - carProgress; // Based on P1 path progress
-            if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
-                 const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
-                 const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
-                 targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
-            }
-            // ---
-
-            const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
-
-            if (targetSpeed > currentSpeed) {
-                 const speedDiff = targetSpeed - currentSpeed;
-                 const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED);
-                 currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
-            } else {
-                 currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
-            }
-
-            // Calculate progress increment based on speed relative to P1 path length
-            const progressIncrement = (currentSpeed / player1TotalLength);
-            const nextProgress = carProgress + progressIncrement;
-
-            // Get the next position ALONG THE P2 PATH based on the *calculated progress*
-            const nextPos = getPointAlongPath(nextProgress, player2Path);
-
-            // --- Fuel Consumption Update ---
-            const distanceMoved = dist(carPosition, nextPos);
-            fuelConsumed += distanceMoved;
-
-            // --- Update Car State ---
-            previousCarPosition = { ...carPosition };
-            carPosition = nextPos;
-            carProgress = nextProgress; // Update progress along the conceptual P1 path length
-            carTrail.push({ ...carPosition });
-
-            // --- Update Car Angle and Sounds ---
-            const direction = getDirectionAlongPath(carProgress, player2Path); // Get direction from P2 path shape
-            const targetCarAngle = Math.atan2(direction.y, direction.x);
-            const angleDiff = targetCarAngle - currentCarAngle;
-            const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
-            currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
-
-            // Determine if the car should be screeching in this frame
-            const shouldBeScreeching = Math.abs(normalizedDiff) > TURN_THRESHOLD;
-
-            // Check if screeching just started
-            if (shouldBeScreeching && !isScreeching) {
-                playSound('screech');
-                // No need for sound cooldown check here as it only plays on transition to true
-            }
-
-            // Update the screeching state for the current frame
-            isScreeching = shouldBeScreeching;
-
-            // Add tire marks if currently screeching
-            if (isScreeching) {
-                // --- Add Tire Marks ---
-                const carWidth = CAR_CONSTANTS?.WIDTH || 15;
-                const carLength = CAR_CONSTANTS?.HEIGHT || 25;
-                const halfW = carWidth / 2;
-                const halfL = carLength / 2;
-
-                const tireOffsets = [
-                    { x: halfW, y: -halfL }, { x: -halfW, y: -halfL },
-                    { x: halfW, y: halfL }, { x: -halfW, y: halfL }
-                ];
-
-                // Helper function (already exists from previous step)
-                const calculateTirePositions = (centerPos, angle) => {
-                    const cosA = Math.cos(angle);
-                    const sinA = Math.sin(angle);
-                    return tireOffsets.map(offset => {
-                        const rotatedX = offset.x * cosA - offset.y * sinA;
-                        const rotatedY = offset.x * sinA + offset.y * cosA;
-                        return { x: centerPos.x + rotatedX, y: centerPos.y + rotatedY };
-                    });
-                };
-
-                // Calculate positions for current and previous frame
-                const currentTirePositions = calculateTirePositions(carPosition, currentCarAngle);
-                if (previousCarPosition && previousCarAngle !== undefined) {
-                    const previousTirePositions = calculateTirePositions(previousCarPosition, previousCarAngle);
-
-                    // Add a line segment for each tire
-                    for (let i = 0; i < 4; i++) {
-                        // Only add if the tire actually moved significantly (optional optimization)
-                        if (distSq(previousTirePositions[i], currentTirePositions[i]) > 0.1) {
-                             tireMarks.push({
-                                start: previousTirePositions[i],
-                                end: currentTirePositions[i]
-                            });
-                        }
-                    }
-                }
-                // --- End Add Tire Marks ---
-            }
-
-            // Store current angle as previous for the next frame BEFORE updating it
-            previousCarAngle = currentCarAngle;
-
-            if (!engineSound) {
-                engineSound = playSound('engine');
-            } else {
-                engineSound.updateSpeed(currentSpeed, CAR_PIXEL_SPEED);
-            }
-
-            // --- Redraw and Continue Animation ---
-            redrawAll();
 
             // Request next frame only if not finishing
             if (!isFinishing) {
