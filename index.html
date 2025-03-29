@@ -1174,8 +1174,7 @@
             
             // Stop engine sound if playing
             if (engineSound) {
-                engineSound.mainOsc.stop();
-                engineSound.varOsc.stop();
+                engineSound.stop(); // Call the stop method provided by createV8EngineSound
                 engineSound = null;
             }
             
@@ -1561,8 +1560,7 @@
             
             // Stop engine sound if playing
             if (engineSound) {
-                engineSound.mainOsc.stop();
-                engineSound.varOsc.stop();
+                engineSound.stop(); // Call the stop method provided by createV8EngineSound
                 engineSound = null;
             }
             
@@ -1672,8 +1670,7 @@
                 
                 // Stop engine sound
                 if (engineSound) {
-                    engineSound.mainOsc.stop();
-                    engineSound.varOsc.stop();
+                    engineSound.stop(); // Call the stop method provided by createV8EngineSound
                     engineSound = null;
                 }
                 
@@ -1787,8 +1784,7 @@
 
                 // Stop engine sound
                 if (engineSound) {
-                    engineSound.mainOsc.stop();
-                    engineSound.varOsc.stop();
+                    engineSound.stop(); // Call the stop method provided by createV8EngineSound
                     engineSound = null;
                 }
 
@@ -2141,7 +2137,7 @@
             // Stop any ongoing car animation/sound
             if (carAnimationFrame) cancelAnimationFrame(carAnimationFrame);
             carAnimationFrame = null;
-            if (engineSound) { engineSound.mainOsc.stop(); engineSound.varOsc.stop(); engineSound = null; }
+            if (engineSound) { engineSound.stop(); engineSound = null; }
             carProgress = 0; carPosition = { x: 0, y: 0 }; carAngle = 0; carTrail = []; isScreeching = false;
 
             // Now, trigger the logic similar to handleP1Done to set up P2 phase
