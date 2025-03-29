@@ -19,7 +19,7 @@
             align-items: center;
             gap: 10px;
         }
-        #doneButton, #resetButton, #saveP1CourseButton {
+        #doneButton, #resetButton, #saveCourseButton {
             padding: 8px 15px;
             font-size: 1rem;
             cursor: pointer;
@@ -30,13 +30,13 @@
             border-radius: 4px;
             transition: background-color 0.3s, opacity 0.3s;
         }
-        #saveP1CourseButton {
+        #saveCourseButton {
             background-color: #007bff;
         }
-        #saveP1CourseButton:hover {
+        #saveCourseButton:hover {
             background-color: #0056b3;
         }
-        #saveP1CourseButton:disabled {
+        #saveCourseButton:disabled {
             opacity: 0.7;
             cursor: default;
         }
@@ -265,8 +265,8 @@
 <body>
     <div id="controls">
         <button id="doneButton">Valmis!</button>
-        <button id="saveP1CourseButton">Tallenna rata</button> <!-- Ensure this has NO display:none -->
-        <button id="resetButton" style="display: none;">Uusi Peli</button> <!-- Keep this hidden -->
+        <button id="saveCourseButton">Tallenna rata</button>
+        <button id="resetButton" style="display: none;">Uusi Peli</button>
         <div class="width-control">
             <label for="widthSlider">Polun leveys:</label>
             <input type="range" id="widthSlider" min="20" max="60" value="40">
@@ -301,7 +301,7 @@
         <div class="game-screen-buttons">
             <button id="victoryReplayButton" class="game-button replay-button">Yritä Uudelleen <span class="emoji">🚗</span></button>
             <button id="victoryNewGameButton" class="game-button new-game-button">Luo Uusi Peli <span class="emoji">🛣️</span></button>
-            <button id="saveCourseButton">Tallenna rata</button>
+            <button id="victorySaveButton" class="game-button">Tallenna rata</button>
         </div>
     </div>
     
@@ -333,7 +333,7 @@
         const sidebarContent = document.getElementById('sidebarContent'); // Sidebar content area
         const closeSidebarButton = document.getElementById('closeSidebarButton'); // Close button
         const trashCan = document.getElementById('trashCan'); // Trashcan element
-        const saveP1CourseButton = document.getElementById('saveP1CourseButton'); // Get reference to the new button
+        const saveCourseButton = document.getElementById('saveCourseButton'); // Get reference to the new button
 
         // --- Constants ---
         const P1_COLOR = 'lightblue';
@@ -769,9 +769,9 @@
              gameState = 'P2_WAITING';
              isDrawing = false;
              doneButton.style.display = 'none';
-             saveP1CourseButton.style.display = 'none'; // Hide P1 save button
+             saveCourseButton.style.display = 'none'; // Hide save button during P2 phase
              resetButton.style.display = 'inline-block';
-             savedCoursesButton.style.display = 'none'; // Hide saved courses list button
+             savedCoursesButton.style.display = 'none';
              statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
 
             player1TotalLength = calculatePathLength(player1Path);
@@ -911,7 +911,7 @@
             const victoryScreen = document.getElementById('victoryScreen');
             const scoreDisplay = document.getElementById('scoreDisplay');
             const scoreMessage = document.getElementById('scoreMessage');
-            const saveButton = document.getElementById('saveCourseButton');
+            const saveButton = document.getElementById('victorySaveButton');
             const newRecordMsg = document.getElementById('newRecordMessage');
 
             // Store the high score *before* this run
@@ -932,7 +932,7 @@
             scoreDisplay.textContent = `Pisteet: ${score}`;
             scoreMessage.textContent = getScoreMessage(score);
             newRecordMsg.style.display = newRecordSet ? 'block' : 'none';
-            saveButton.style.display = 'none';
+            saveButton.style.display = 'block'; // Show the save button
 
             // Show the screen
             victoryScreen.style.display = 'flex';
@@ -1104,7 +1104,7 @@
             gameState = 'P2_WAITING';
             statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
             redrawAll();
-            saveP1CourseButton.style.display = 'none'; // Hide P1 save button
+            saveCourseButton.style.display = 'none'; // Hide P1 save button
         }
 
         function resetGame() {
@@ -1136,9 +1136,9 @@
             currentSessionHighScore = 0;
             currentSessionBestPlayer2Path = [];
             doneButton.style.display = 'inline-block';
-            saveP1CourseButton.style.display = 'inline-block'; // Show P1 save button
-            saveP1CourseButton.disabled = false; // Ensure it's enabled
-            saveP1CourseButton.textContent = 'Tallenna rata'; // Reset text
+            saveCourseButton.style.display = 'inline-block'; // Show save button
+            saveCourseButton.disabled = false; // Ensure it's enabled
+            saveCourseButton.textContent = 'Tallenna rata'; // Reset text
             resetButton.style.display = 'none';
             statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
             
@@ -1448,6 +1448,8 @@
 
         doneButton.addEventListener('click', handleP1Done);
         resetButton.addEventListener('click', resetGame);
+        saveCourseButton.addEventListener('click', saveCourseNow); // Main save button
+        document.getElementById('victorySaveButton').addEventListener('click', saveCourseNow); // Victory screen save button
 
         // Add width slider event listener
         const widthSlider = document.getElementById('widthSlider');
@@ -1465,7 +1467,6 @@
         // Add event listeners for game screens
         document.getElementById('victoryReplayButton').addEventListener('click', replayLevel);
         document.getElementById('victoryNewGameButton').addEventListener('click', resetGame);
-        document.getElementById('saveCourseButton').addEventListener('click', saveCurrentCourse); // Add listener for the new button
         document.getElementById('defeatReplayButton').addEventListener('click', replayLevel);
         document.getElementById('defeatNewGameButton').addEventListener('click', resetGame);
 
@@ -2030,7 +2031,7 @@
 
             // Update controls visibility
             doneButton.style.display = 'none'; // P1 is done by loading
-            saveP1CourseButton.style.display = 'none'; // Hide P1 save button too
+            saveCourseButton.style.display = 'none'; // Hide P1 save button too
             resetButton.style.display = 'inline-block';
 
             // Stop any ongoing car animation/sound
@@ -2213,7 +2214,7 @@
         // --- Course Loading/Deleting ---
         // ... (existing loadCourse code before button visibility) ...
         doneButton.style.display = 'none'; // P1 is done by loading
-        saveP1CourseButton.style.display = 'none'; // Hide P1 save button too
+        saveCourseButton.style.display = 'none'; // Hide P1 save button too
         resetButton.style.display = 'inline-block';
         // ... (rest of loadCourse code) ...
 
@@ -2222,7 +2223,7 @@
 
         // Setup Event Listeners
         // ... (existing canvas, doneButton, resetButton listeners) ...
-        saveP1CourseButton.addEventListener('click', saveP1CourseNow); // Add listener for the new button
+        saveCourseButton.addEventListener('click', saveCourseNow); // Add listener for the new button
 
         // ... (existing width slider, window resize, game screen button listeners) ...
 
@@ -2249,6 +2250,116 @@
             } else {
                 // If no particles left, ensure we clean up
                 particleAnimationFrame = null;
+            }
+        }
+
+        // NEW function for saving course during any phase
+        function saveCourseNow() {
+            if (gameState !== 'P1_DRAWING' && gameState !== 'SHOWING_SCORE') {
+                console.warn("Attempted to save course outside of valid phases.");
+                return;
+            }
+
+            // Get the correct save button based on game state
+            const saveButton = gameState === 'P1_DRAWING' ? 
+                document.getElementById('saveCourseButton') : 
+                document.getElementById('victorySaveButton');
+
+            if (gameState === 'P1_DRAWING') {
+                if (!player1Path || player1Path.length < 2) {
+                    alert("Rataa ei voi tallentaa, koska polku on liian lyhyt!");
+                    return;
+                }
+
+                // Use the current P1 path for hashing and saving
+                const coursePathToSave = [...player1Path]; // Create a copy
+                const courseId = hashPath(coursePathToSave);
+                const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+
+                const newCourseData = {
+                    id: courseId,
+                    name: courseName,
+                    player1Path: coursePathToSave,
+                    highScore: 0, // No high score yet
+                    highScorePlayer2Path: [] // No P2 path yet
+                };
+
+                try {
+                    let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                    const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
+
+                    if (existingCourseIndex !== -1) {
+                        // Course with this exact path already exists
+                        alert("Tämä rata on jo tallennettu.");
+                        saveButton.textContent = 'Jo tallennettu';
+                        setTimeout(() => { saveButton.textContent = 'Tallenna rata'; }, 1500);
+                    } else {
+                        // --- Add new course ---
+                        savedCourses.push(newCourseData);
+                        localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                        console.log(`P1 course saved: ${newCourseData.name}`, newCourseData);
+
+                        // Provide feedback on the button
+                        saveButton.textContent = 'Tallennettu!';
+                        saveButton.disabled = true;
+                        setTimeout(() => {
+                            saveButton.textContent = 'Tallenna rata';
+                            saveButton.disabled = false;
+                        }, 1500);
+
+                        // If the sidebar is open, refresh it
+                        if (savedCoursesSidebar.classList.contains('visible')) {
+                            populateSavedCoursesSidebar();
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error saving P1 course to localStorage:", error);
+                    alert("Radan tallentamisessa tapahtui virhe.");
+                }
+            } else if (gameState === 'SHOWING_SCORE') {
+                // This is the same as the existing saveCurrentCourse logic
+                if (!smoothedPath || smoothedPath.length < 2) {
+                    console.error("Cannot save: No valid Player 1 path exists.");
+                    alert("Rataa ei voi tallentaa, koska Pelaaja 1:n polkua ei ole piirretty kunnolla.");
+                    return;
+                }
+
+                if (currentSessionHighScore <= 0 || !currentSessionBestPlayer2Path || currentSessionBestPlayer2Path.length < 2) {
+                    console.warn("Saving course with potentially zero score or missing P2 path for the session.");
+                }
+
+                const courseId = hashPath(smoothedPath);
+                const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+
+                const newCourseData = {
+                    id: courseId,
+                    name: courseName,
+                    player1Path: smoothedPath,
+                    highScore: currentSessionHighScore,
+                    highScorePlayer2Path: currentSessionBestPlayer2Path
+                };
+
+                try {
+                    let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                    const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
+
+                    if (existingCourseIndex === -1) {
+                        savedCourses.push(newCourseData);
+                        localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                        console.log(`Course saved for the first time: ${newCourseData.name}`, newCourseData);
+                        saveButton.textContent = 'Tallennettu!';
+                        saveButton.disabled = true;
+                    } else {
+                        console.warn(`Save button clicked, but course ${courseId} already exists.`);
+                        saveButton.textContent = 'Rata tallennettu';
+                        saveButton.disabled = true;
+                    }
+                } catch (error) {
+                    console.error("Error saving new course to localStorage:", error);
+                    alert("Radan tallentamisessa tapahtui virhe.");
+                    saveButton.textContent = 'Tallennus epäonnistui';
+                    saveButton.disabled = false;
+                }
             }
         }
     </script>
