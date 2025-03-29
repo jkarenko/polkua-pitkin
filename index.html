@@ -1655,6 +1655,10 @@
             const normalizedDiff = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
             currentCarAngle += normalizedDiff * CAR_TURN_SPEED;
 
+            // Update wheel angle based on the normalized difference
+            // This makes the wheels turn more dramatically when the car is turning
+            currentWheelAngle = Math.max(-MAX_WHEEL_ANGLE, Math.min(MAX_WHEEL_ANGLE, normalizedDiff * 2));
+
             // Determine if the car should be screeching in this frame
             const shouldBeScreeching = Math.abs(normalizedDiff) > TURN_THRESHOLD;
 
