@@ -1,17 +1,24 @@
 // Import existing modules
 import {drawCar, createCar, CAR_CONSTANTS} from './car.js';
 import {
-    distSq,
-    dist,
-    pointLineSegmentDistance,
-    calculatePathLength,
-    getPointAlongPath,
     calculateCurvature,
     getSpeedMultiplier,
     getDecelerationRate,
     calculateTirePositions,
     updateCarPhysics
 } from './core/carPhysics.js';
+import {
+    distSq,
+    dist,
+    pointLineSegmentDistance,
+    calculatePathLength,
+    getPointAlongPath,
+    isPointWithinPath,
+    getProgressAlongPath,
+    smoothPath,
+    simpleHash,
+    hashPath
+} from './core/path.js';
 import { playSound, playHonk, setHasInteracted } from './audio.js';
 import { generateDecorationsForPath, generateDecorationsAlongSegment } from './decoration.js';
 import { createCrashEffect, createVictoryCelebration, createOutOfFuelEffect, updateAndDrawParticles } from './effects.js';
@@ -96,115 +103,11 @@ export function initializeGame() {
 
     // Utility functions for distance calculations moved to carPhysics.js
 
-    const isPointWithinPath = (point, path, threshold) => {
-        if (path.length < 2) {
-            return true;
-        } // Path is just a point or empty
-
-        // For Player 1's drawing phase, use the original behavior
-        if (gameStates.gameState === GAME_STATES.P1_DRAWING) {
-            let minDistance = Infinity;
-            for (let i = 0; i < path.length - 1; i++) {
-                minDistance = Math.min(minDistance, pointLineSegmentDistance(point, path[i], path[i + 1]));
-            }
-            if (path.length > 0) {
-                minDistance = Math.min(minDistance, dist(point, path[0]));
-                minDistance = Math.min(minDistance, dist(point, path[path.length - 1]));
-            }
-            return minDistance <= threshold;
-        }
-
-        // For Player 2's drawing phase, check against all segments up to current position plus look-ahead
-        const lookAheadSegments = 3;
-        const startIdx = 0;
-        const endIdx = Math.min(gameStates.currentActiveSegmentIndex + lookAheadSegments, path.length - 1);
-
-        let minDistance = Infinity;
-        for (let i = startIdx; i <= endIdx; i++) {
-            if (i < path.length - 1) {
-                minDistance = Math.min(minDistance, pointLineSegmentDistance(point, path[i], path[i + 1]));
-            }
-        }
-
-        // If we're near the end of the current segment, advance to the next one
-        if (gameStates.currentActiveSegmentIndex < path.length - 1) {
-            const currentSegmentEnd = path[gameStates.currentActiveSegmentIndex + 1];
-            if (dist(point, currentSegmentEnd) <= threshold * 1.5) {
-                gameStates.currentActiveSegmentIndex++;
-            }
-        }
-
-        return minDistance <= threshold;
-    };
+    // isPointWithinPath function moved to path.js
 
     // calculatePathLength function moved to carPhysics.js
 
-    const getProgressAlongPath = (point, path) => {
-        if (path.length < 2 || gameStates.player1TotalLength === 0) {
-            return 0;
-        }
-
-        if (gameStates.gameState === GAME_STATES.P1_DRAWING) {
-            let minDistanceSq = Infinity;
-            let lengthUpToProjection = 0;
-            let accumulatedLength = 0;
-
-            for (let i = 0; i < path.length - 1; i++) {
-                const a = path[i];
-                const b = path[i + 1];
-                const segmentLength = dist(a, b);
-                const l2 = distSq(a, b);
-                let currentProjection = a;
-                let t = 0;
-
-                if (l2 !== 0) {
-                    t = ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / l2;
-                    t = Math.max(0, Math.min(1, t));
-                    currentProjection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
-                }
-
-                const dSq = distSq(point, currentProjection);
-
-                if (dSq < minDistanceSq) {
-                    minDistanceSq = dSq;
-                    lengthUpToProjection = accumulatedLength + t * segmentLength;
-                }
-                accumulatedLength += segmentLength;
-            }
-            // Check distance to the last point as well
-            const distToLastPointSq = distSq(point, path[path.length - 1]);
-            if (distToLastPointSq < minDistanceSq) {
-                lengthUpToProjection = accumulatedLength;
-            }
-
-            return lengthUpToProjection / gameStates.player1TotalLength;
-        }
-
-        // For Player 2's drawing phase, calculate progress based on current active segment
-        let accumulatedLength = 0;
-        let currentSegmentProgress = 0;
-
-        // Calculate length up to current active segment
-        for (let i = 0; i < gameStates.currentActiveSegmentIndex; i++) {
-            accumulatedLength += dist(path[i], path[i + 1]);
-        }
-
-        // Calculate progress within current segment
-        if (gameStates.currentActiveSegmentIndex < path.length - 1) {
-            const currentStart = path[gameStates.currentActiveSegmentIndex];
-            const currentEnd = path[gameStates.currentActiveSegmentIndex + 1];
-            const segmentLength = dist(currentStart, currentEnd);
-            const l2 = distSq(currentStart, currentEnd);
-
-            if (l2 !== 0) {
-                const t = ((point.x - currentStart.x) * (currentEnd.x - currentStart.x) +
-                    (point.y - currentStart.y) * (currentEnd.y - currentStart.y)) / l2;
-                currentSegmentProgress = Math.max(0, Math.min(1, t)) * segmentLength;
-            }
-        }
-
-        return (accumulatedLength + currentSegmentProgress) / gameStates.player1TotalLength;
-    };
+    // getProgressAlongPath function moved to path.js
 
     // Car physics calculation functions moved to carPhysics.js
     // - calculateCurvature
@@ -217,39 +120,7 @@ export function initializeGame() {
 
 
 
-    const smoothPath = (path) => {
-        if (path.length < 3) {
-            return path;
-        }
-
-        const smoothed = [];
-        const halfWindow = Math.floor(SMOOTHING_WINDOW / 2);
-
-        for (let i = 0; i < path.length; i++) {
-            let sumX = 0;
-            let sumY = 0;
-            let count = 0;
-
-            // Calculate weighted average of surrounding points
-            for (let j = -halfWindow; j <= halfWindow; j++) {
-                const idx = i + j;
-                if (idx >= 0 && idx < path.length) {
-                    // Use triangular weighting (points closer have more influence)
-                    const weight = 1 - Math.abs(j) / (halfWindow + 1);
-                    sumX += path[idx].x * weight;
-                    sumY += path[idx].y * weight;
-                    count += weight;
-                }
-            }
-
-            smoothed.push({
-                x: sumX / count,
-                y: sumY / count
-            });
-        }
-
-        return smoothed;
-    };
+    // smoothPath function moved to path.js
 
     const handleP1Done = () => {
         if (gameStates.player1Path.length < 2) {
@@ -505,7 +376,7 @@ export function initializeGame() {
         }
 
         const effectivePathLength = isDrawingPhase ?
-            getProgressAlongPath(currentPosition, gameStates.player1Path) * gameStates.player1TotalLength :
+            getProgressAlongPath(currentPosition, gameStates.player1Path, gameStates.player1TotalLength, gameStates, GAME_STATES) * gameStates.player1TotalLength :
             gameStates.fuelConsumed + distanceMoved;
 
         if (effectivePathLength > gameStates.maxAllowedPathLength) {
@@ -588,7 +459,7 @@ export function initializeGame() {
 
         } else if (gameStates.gameState === GAME_STATES.P2_DRAWING) {
             const threshold = gameStates.P1_WIDTH / 2 * gameStates.HIT_THRESHOLD_FACTOR;
-            if (!isPointWithinPath(pos, gameStates.player1Path, threshold)) {
+            if (!isPointWithinPath(pos, gameStates.player1Path, threshold, gameStates, GAME_STATES)) {
                 playSound('alarm');
                 resetPlayer2();
                 statusDiv.textContent = 'Pelaaja 2: Hups! Eksyit polulta! Aloita uudelleen alusta.';
@@ -623,7 +494,7 @@ export function initializeGame() {
             ctx.lineJoin = 'round';
             ctx.stroke();
 
-            const currentProgress = getProgressAlongPath(pos, gameStates.player1Path);
+            const currentProgress = getProgressAlongPath(pos, gameStates.player1Path, gameStates.player1TotalLength, gameStates, GAME_STATES);
             const currentMilestone = Math.floor(currentProgress / PROGRESS_INTERVAL);
 
             if (currentMilestone > gameStates.lastPlayedProgressMilestone && currentProgress < 1.0) {
@@ -651,14 +522,14 @@ export function initializeGame() {
             gameStates.isDrawing = false;
 
             if (gameStates.endMarker && dist(lastPos, gameStates.endMarker) <= gameStates.endMarker.snapRadius) {
-                const finalProgress = getProgressAlongPath(lastPos, gameStates.player1Path);
+                const finalProgress = getProgressAlongPath(lastPos, gameStates.player1Path, gameStates.player1TotalLength, gameStates, GAME_STATES);
                 if (finalProgress >= 0.95) {
                     gameStates.gameState = GAME_STATES.CAR_ANIMATING;
                     statusDiv.textContent = 'Pelaaja 2: Polku valmis! Odota autoa...';
                     playSound('success');
 
                     // Apply smoothing to player 2 path for better car animation
-                    gameStates.player2Path = smoothPath(gameStates.player2Path);
+                    gameStates.player2Path = smoothPath(gameStates.player2Path, SMOOTHING_WINDOW);
 
                     redrawAllHelper();
                     drawPath(ctx, gameStates.player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
@@ -1524,24 +1395,7 @@ export function initializeGame() {
         }
     };
 
-    const simpleHash = (str) => {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = char + (hash << 6) + (hash << 16) - hash;
-        }
-        // Convert to a positive hexadecimal string prefixed with 'h_'
-        return `h_${(hash >>> 0).toString(16)}`;
-    };
-
-    const hashPath = (path) => {
-        if (!path || path.length === 0) {
-            return 'h_empty';
-        }
-        // Stringify with fixed precision to handle floating point variations
-        const pathString = JSON.stringify(path.map(p => ({ x: p.x.toFixed(3), y: p.y.toFixed(3) })));
-        return simpleHash(pathString);
-    };
+    // simpleHash and hashPath functions moved to path.js
 
     doneButton.style.display = 'none'; // P1 is done by loading
     saveCourseButton.style.display = 'none'; // Hide P1 save button too

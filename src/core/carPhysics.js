@@ -3,6 +3,13 @@
 
 // Import any dependencies
 import { CAR_CONSTANTS } from '../car.js';
+import {
+    distSq,
+    dist,
+    pointLineSegmentDistance,
+    calculatePathLength,
+    getPointAlongPath
+} from './path.js';
 
 // Physics constants for drifting and hand-brake turns
 const DRIFT_PHYSICS = {
@@ -17,70 +24,9 @@ const DRIFT_PHYSICS = {
     MOMENTUM_DECAY: 0.95            // How quickly momentum decays when not drifting (new parameter)
 };
 
-// Utility functions for distance calculations
-const distSq = (p1, p2) => {
-    return (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2;
-};
+// Utility functions for distance calculations moved to path.js
 
-const dist = (p1, p2) => {
-    return Math.sqrt(distSq(p1, p2));
-};
-
-const pointLineSegmentDistance = (p, a, b) => {
-    const l2 = distSq(a, b);
-    if (l2 === 0) {
-        return dist(p, a);
-    }
-    let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
-    t = Math.max(0, Math.min(1, t));
-    const projection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
-    return dist(p, projection);
-};
-
-// Path calculation functions
-const calculatePathLength = (path) => {
-    let length = 0;
-    for (let i = 0; i < path.length - 1; i++) {
-        length += dist(path[i], path[i + 1]);
-    }
-    return length;
-};
-
-const getPointAlongPath = (progress, path) => {
-    if (!path || path.length < 2) {
-        return path[0] || { x: 0, y: 0 };
-    }
-
-    let pathTotalLength = calculatePathLength(path);
-    if (pathTotalLength === 0) {
-        return path[0];
-    }
-
-    let targetDistance = progress * pathTotalLength;
-    let accumulatedLength = 0;
-
-    for (let i = 0; i < path.length - 1; i++) {
-        const segmentLength = dist(path[i], path[i + 1]);
-        if (accumulatedLength + segmentLength >= targetDistance || i === path.length - 2) {
-            // If segmentLength is 0, t calculation fails, return start point of segment
-            if (segmentLength === 0) {
-                return path[i];
-            }
-            // Ensure progress doesn't exceed 1 due to float precision
-            const clampedTarget = Math.min(targetDistance, pathTotalLength);
-            const t = (clampedTarget - accumulatedLength) / segmentLength;
-            // Clamp t between 0 and 1
-            const clampedT = Math.max(0, Math.min(1, t));
-            return {
-                x: path[i].x + clampedT * (path[i + 1].x - path[i].x),
-                y: path[i].y + clampedT * (path[i + 1].y - path[i].y)
-            };
-        }
-        accumulatedLength += segmentLength;
-    }
-    // Fallback: return the last point if progress is 1 or more
-    return path[path.length - 1];
-};
+// Path calculation functions moved to path.js
 
 // Function to detect sharp turns and determine if a hand-brake turn is needed
 const detectSharpTurn = (progress, path, maxCurvature, lookAheadDistance) => {
@@ -613,11 +559,6 @@ const updateCarPhysics = (carState, path, constants, checkFuelLimit) => {
 
 // Export all functions and constants
 export {
-    distSq,
-    dist,
-    pointLineSegmentDistance,
-    calculatePathLength,
-    getPointAlongPath,
     calculateCurvature,
     getSpeedMultiplier,
     getDecelerationRate,
