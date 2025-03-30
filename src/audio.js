@@ -12,6 +12,7 @@ function initAudio() {
 }
 
 function playHonk(durations = [0.3], pauses = [0]) {
+    initAudio();
     if (!audioCtx) {
         return;
     }
@@ -60,9 +61,13 @@ function playHonk(durations = [0.3], pauses = [0]) {
 
 function playSound(type, pitchFactor = 0) {
     initAudio();
-    if (!audioCtx) return;
+    if (!audioCtx) {
+      return;
+    }
 
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
 
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
@@ -170,15 +175,15 @@ function createEngineSound() {
     let running = true;
     // const baseRPM = 800; // Replaced by passed minRPM
 
-    function fireCylinder(cylIndex, time, duration, intensity) {
+    const fireCylinder = (cylIndex, time, duration, intensity) => {
         const gain = gains[cylIndex];
         gain.gain.cancelScheduledValues(time);
         gain.gain.setValueAtTime(0, time);
         gain.gain.linearRampToValueAtTime(intensity, time + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
-    }
+    };
 
-    async function engineCycle() {
+    const engineCycle = async () => {
         while (running) {
             let cycleTime = audioCtx.currentTime;
             for (let i = 0; i < cylinderCount; i++) {
@@ -189,9 +194,11 @@ function createEngineSound() {
             const waitTimeMs = Math.max(1, (firingInterval * cylinderCount * 1000) - 10);
             await new Promise(r => setTimeout(r, waitTimeMs));
         }
-    }
+    };
 
-    engineCycle();
+    engineCycle().catch(error => {
+        console.error('Engine cycle error:', error);
+    });
 
     return {
         oscillators,
@@ -207,7 +214,7 @@ function createEngineSound() {
             currentRPM = Math.max(minRPM, newRPM);
             firingInterval = 120 / currentRPM; // Update firing rate
 
-            const currentTime = audioCtx.currentTime;
+            const {currentTime} = audioCtx;
 
             // Calculate the RPM range, avoid division by zero
             const rpmRange = Math.max(1, maxRPM - minRPM); // Ensure range is at least 1
