@@ -1,8 +1,15 @@
 // Import existing modules
-import { drawCar, CAR_CONSTANTS, createCar } from './car.js';
+import { drawCar, createCar } from './car.js';
 import { playSound, playHonk, setHasInteracted } from './audio.js';
 import { generateDecorationsForPath, generateDecorationsAlongSegment } from './decoration.js';
 import { createCrashEffect, createVictoryCelebration, createOutOfFuelEffect, updateAndDrawParticles } from './effects.js';
+import {
+    GAME_STATES,
+    VISUAL_CONSTANTS,
+    GAMEPLAY_CONSTANTS,
+    CAR_CONSTANTS,
+    UI_CONSTANTS
+} from './core/gameState.js';
 
 // Export all the game constants and initialization
 export function initializeGame() {
@@ -19,43 +26,53 @@ export function initializeGame() {
     const saveCourseButton = document.getElementById('saveCourseButton');
 
     // --- Constants ---
-    const P1_COLOR = 'lightblue';
-    let P1_WIDTH = 40;
-    const P2_COLOR = 'black';
-    const P2_WIDTH = 3;
-    const START_COLOR = 'gray';
-    const END_COLOR = 'green';
-    const MARKER_RADIUS_FACTOR = 1.4;
-    const HIT_THRESHOLD_FACTOR = 1.1;
-    const PROGRESS_INTERVAL = 0.10;
-    const START_END_SNAP_RADIUS_FACTOR = 1.5;
-    const SCORE_THRESHOLD = 20;
-    const SCORE_POINTS = 100;
-    const MAX_PATH_LENGTH_FACTOR = 1.20;
-    const THUMBNAIL_WIDTH = 240;
-    const THUMBNAIL_HEIGHT = 150;
-    const THUMBNAIL_PADDING = 10;
+    let { P1_WIDTH } = VISUAL_CONSTANTS;
+    const {
+        P1_COLOR,
+        P2_COLOR,
+        P2_WIDTH,
+        START_COLOR,
+        END_COLOR,
+        MARKER_RADIUS_FACTOR,
+        HIT_THRESHOLD_FACTOR,
+        START_END_SNAP_RADIUS_FACTOR
+    } = VISUAL_CONSTANTS;
+
+    const {
+        PROGRESS_INTERVAL,
+        SCORE_THRESHOLD,
+        SCORE_POINTS,
+        MAX_PATH_LENGTH_FACTOR
+    } = GAMEPLAY_CONSTANTS;
+
+    const {
+        THUMBNAIL_WIDTH,
+        THUMBNAIL_HEIGHT,
+        THUMBNAIL_PADDING
+    } = UI_CONSTANTS;
 
     // Car constants
-    const CAR_PIXEL_SPEED = 2;
-    const CAR_ANIMATION_INTERVAL = 16;
-    const SMOOTHING_WINDOW = 10;
-    const CURVATURE_WINDOW = 10;
-    const MAX_CURVATURE = 0.9;
-    const ACCELERATION_RATE = 0.005;
-    const BASE_DECELERATION_RATE = 0.8;
-    const CURVE_LOOK_AHEAD = 0.15;
-    const MAX_DECELERATION_RATE = 1.2;
-    const CURVE_PREPARATION_DISTANCE = 0.1;
-    const FINISH_PREPARATION_DISTANCE = 0.2;
-    const MIN_FINISH_SPEED = 0.3;
-    const WHEEL_TURN_SPEED = 0.15;
-    const MAX_WHEEL_ANGLE = Math.PI / 4;
-    const WHEELBASE = 20;
-    const SKID_TURN_RATE_MULTIPLIER = 0.15;
+    const {
+        PIXEL_SPEED: CAR_PIXEL_SPEED,
+        ANIMATION_INTERVAL: CAR_ANIMATION_INTERVAL,
+        SMOOTHING_WINDOW,
+        CURVATURE_WINDOW,
+        MAX_CURVATURE,
+        ACCELERATION_RATE,
+        BASE_DECELERATION_RATE,
+        CURVE_LOOK_AHEAD,
+        MAX_DECELERATION_RATE,
+        CURVE_PREPARATION_DISTANCE,
+        FINISH_PREPARATION_DISTANCE,
+        MIN_FINISH_SPEED,
+        WHEEL_TURN_SPEED,
+        MAX_WHEEL_ANGLE,
+        WHEELBASE,
+        SKID_TURN_RATE_MULTIPLIER
+    } = CAR_CONSTANTS;
 
     // --- State ---
-    let gameState = 'P1_DRAWING';
+    let gameState = GAME_STATES.P1_DRAWING;
     let player1Path = [];
     let smoothedPath = [];
     let player2Path = [];
@@ -132,7 +149,7 @@ export function initializeGame() {
         } // Path is just a point or empty
 
         // For Player 1's drawing phase, use the original behavior
-        if (gameState === 'P1_DRAWING') {
+        if (gameState === GAME_STATES.P1_DRAWING) {
             let minDistance = Infinity;
             for (let i = 0; i < path.length - 1; i++) {
                 minDistance = Math.min(minDistance, pointLineSegmentDistance(point, path[i], path[i + 1]));
@@ -180,7 +197,7 @@ export function initializeGame() {
             return 0;
         }
 
-        if (gameState === 'P1_DRAWING') {
+        if (gameState === GAME_STATES.P1_DRAWING) {
             let minDistanceSq = Infinity;
             let lengthUpToProjection = 0;
             let accumulatedLength = 0;
@@ -416,7 +433,7 @@ export function initializeGame() {
             return;
         }
 
-        gameState = 'P2_WAITING';
+        gameState = GAME_STATES.P2_WAITING;
         isDrawing = false;
         doneButton.style.display = 'none';
         saveCourseButton.style.display = 'none'; // Hide save button during P2 phase
@@ -580,7 +597,7 @@ export function initializeGame() {
 
     const drawFuelGauge = () => {
         // Only draw if P2 is drawing or car is animating
-        if (gameState !== 'P2_DRAWING' && gameState !== 'CAR_ANIMATING') {
+        if (gameState !== GAME_STATES.P2_DRAWING && gameState !== GAME_STATES.CAR_ANIMATING) {
             return;
         }
 
@@ -599,14 +616,14 @@ export function initializeGame() {
 
         // Calculate remaining fuel percentage
         let remainingFuel;
-        if (gameState === 'CAR_ANIMATING') {
+        if (gameState === GAME_STATES.CAR_ANIMATING) {
             // Use actual fuel consumed during animation
             if (defeatFlagged) {
                 remainingFuel = Math.max(0, 1 - (fuelConsumed * MAX_PATH_LENGTH_FACTOR / maxAllowedPathLength));
             } else {
                 remainingFuel = Math.max(0, 1 - (fuelConsumed / maxAllowedPathLength));
             }
-        } else { // gameState === 'P2_DRAWING'
+        } else { // gameState === GAME_STATES.P2_DRAWING
             // Use path length drawn so far
             remainingFuel = Math.max(0, 1 - (currentPathLength / maxAllowedPathLength));
         }
@@ -665,12 +682,12 @@ export function initializeGame() {
                 drawDirectionalMarker(marker.point, marker.direction);
             });
         } else if (player1Path.length > 0) {
-            drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === 'P1_DRAWING');
+            drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === GAME_STATES.P1_DRAWING);
         }
 
         // 2. Draw the car trail if animating or finished (behind decorations and car)
         // Draw the trail even when finished/showing score
-        if ((gameState === 'CAR_ANIMATING' || gameState === 'SHOWING_SCORE' || isFinishing) && carTrail.length > 1) {
+        if ((gameState === GAME_STATES.CAR_ANIMATING || gameState === GAME_STATES.SHOWING_SCORE || isFinishing) && carTrail.length > 1) {
             ctx.beginPath();
             ctx.moveTo(carTrail[0].x, carTrail[0].y);
             for (let i = 1; i < carTrail.length; i++) {
@@ -685,7 +702,7 @@ export function initializeGame() {
 
         // 2.5 Draw Tire Marks (after trail, before decorations/car)
         // Draw tire marks even when finished/showing score
-        if (gameState === 'CAR_ANIMATING' || gameState === 'SHOWING_SCORE' || isFinishing) {
+        if (gameState === GAME_STATES.CAR_ANIMATING || gameState === GAME_STATES.SHOWING_SCORE || isFinishing) {
             ctx.strokeStyle = 'rgba(40, 40, 40, 0.7)'; // Dark semi-transparent color for lines
             ctx.lineWidth = 3; // Width of the tire mark lines
             ctx.lineCap = 'round'; // Make line ends rounded
@@ -704,10 +721,10 @@ export function initializeGame() {
         let drawableItems = [...decorations]; // Start with decorations
 
         // Add P2 Path wrapper ONLY if P2 is drawing or waiting (NO LONGER NEEDED - Trail covers it)
-        // if ((gameState === 'P2_DRAWING' || gameState === 'P2_WAITING') && player2Path.length > 0) { ... } // Remove or comment out
+        // if ((gameState === GAME_STATES.P2_DRAWING || gameState === GAME_STATES.P2_WAITING) && player2Path.length > 0) { ... } // Remove or comment out
 
         // Add ONLY the Car sprite wrapper if animating OR finished/showing score
-        if ((gameState === 'CAR_ANIMATING' || gameState === 'SHOWING_SCORE' || isFinishing) && carPosition) {
+        if ((gameState === GAME_STATES.CAR_ANIMATING || gameState === GAME_STATES.SHOWING_SCORE || isFinishing) && carPosition) {
             drawableItems.push({
                 getLowestY: () => {
                     const carHeight = CAR_CONSTANTS?.HEIGHT || 20;
@@ -738,7 +755,7 @@ export function initializeGame() {
         lastPlayedProgressMilestone = 0;
         currentActiveSegmentIndex = 0; // Reset the active segment index
         currentPathLength = 0; // Reset path length
-        gameState = 'P2_WAITING';
+        gameState = GAME_STATES.P2_WAITING;
         statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
         redrawAll();
         saveCourseButton.style.display = 'none'; // Hide P1 save button
@@ -749,7 +766,7 @@ export function initializeGame() {
         document.getElementById('victoryScreen').style.display = 'none';
         document.getElementById('defeatScreen').style.display = 'none';
 
-        gameState = 'P1_DRAWING';
+        gameState = GAME_STATES.P1_DRAWING;
         player1Path = [];
         smoothedPath = [];
         player2Path = [];
@@ -824,17 +841,17 @@ export function initializeGame() {
 
         const pos = getEventCoords(e);
 
-        if (gameState === 'P1_DRAWING') {
+        if (gameState === GAME_STATES.P1_DRAWING) {
             isDrawing = true;
             player1Path = [pos];
             decorations = []; // Clear all decorations when starting to draw
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-        } else if (gameState === 'P2_WAITING') {
+        } else if (gameState === GAME_STATES.P2_WAITING) {
             if (startMarker && dist(pos, startMarker) <= startMarker.snapRadius) {
                 isDrawing = true;
                 player2Path = [pos];
                 lastPlayedProgressMilestone = 0;
-                gameState = 'P2_DRAWING';
+                gameState = GAME_STATES.P2_DRAWING;
                 statusDiv.textContent = 'Pelaaja 2: Seuraa polkua! Pysy sinisen viivan sisällä!';
                 redrawAll();
                 drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
@@ -879,13 +896,13 @@ export function initializeGame() {
         e.preventDefault();
 
         const pos = getEventCoords(e);
-        const lastPos = (gameState === 'P1_DRAWING' ? player1Path : player2Path).slice(-1)[0];
+        const lastPos = (gameState === GAME_STATES.P1_DRAWING ? player1Path : player2Path).slice(-1)[0];
 
         if (pos.x === lastPos.x && pos.y === lastPos.y) {
             return;
         }
 
-        if (gameState === 'P1_DRAWING') {
+        if (gameState === GAME_STATES.P1_DRAWING) {
             player1Path.push(pos);
             ctx.beginPath();
             ctx.moveTo(lastPos.x, lastPos.y);
@@ -931,7 +948,7 @@ export function initializeGame() {
             decorations = decorations.concat(validDecorations);
             redrawAll();
 
-        } else if (gameState === 'P2_DRAWING') {
+        } else if (gameState === GAME_STATES.P2_DRAWING) {
             const threshold = P1_WIDTH / 2 * HIT_THRESHOLD_FACTOR;
             if (!isPointWithinPath(pos, player1Path, threshold)) {
                 playSound('alarm');
@@ -947,7 +964,7 @@ export function initializeGame() {
             // Check fuel limit using shared function
             if (checkFuelLimit(pos, newSegmentLength, true)) {
                 isDrawing = false; // Stop drawing
-                gameState = 'SHOWING_SCORE'; // Change state to show score
+                gameState = GAME_STATES.SHOWING_SCORE; // Change state to show score
 
                 // Add 1-second delay before showing defeat screen
                 setTimeout(() => {
@@ -984,21 +1001,21 @@ export function initializeGame() {
         }
         e.preventDefault();
 
-        if (gameState === 'P1_DRAWING') {
+        if (gameState === GAME_STATES.P1_DRAWING) {
             isDrawing = false;
             if (player1Path.length < 2) {
                 statusDiv.textContent = "Pelaaja 1: Polku on liian lyhyt! Piirrä pitempi polku.";
             } else {
                 statusDiv.textContent = "Pelaaja 1: Paina 'Valmis' tai jatka piirtämistä.";
             }
-        } else if (gameState === 'P2_DRAWING') {
+        } else if (gameState === GAME_STATES.P2_DRAWING) {
             const lastPos = player2Path.slice(-1)[0];
             isDrawing = false;
 
             if (endMarker && dist(lastPos, endMarker) <= endMarker.snapRadius) {
                 const finalProgress = getProgressAlongPath(lastPos, player1Path);
                 if (finalProgress >= 0.95) {
-                    gameState = 'CAR_ANIMATING';
+                    gameState = GAME_STATES.CAR_ANIMATING;
                     statusDiv.textContent = 'Pelaaja 2: Polku valmis! Odota autoa...';
                     playSound('success');
                     redrawAll();
@@ -1090,17 +1107,17 @@ export function initializeGame() {
     };
 
     const saveCourseNow = () => {
-        if (gameState !== 'P1_DRAWING' && gameState !== 'SHOWING_SCORE') {
+        if (gameState !== GAME_STATES.P1_DRAWING && gameState !== GAME_STATES.SHOWING_SCORE) {
             console.warn("Attempted to save course outside of valid phases.");
             return;
         }
 
-        const saveButton = gameState === 'P1_DRAWING' ?
+        const saveButton = gameState === GAME_STATES.P1_DRAWING ?
             document.getElementById('saveCourseButton') :
             document.getElementById('victorySaveButton');
 
         // Handle P1 drawing phase saving as before
-        if (gameState === 'P1_DRAWING') {
+        if (gameState === GAME_STATES.P1_DRAWING) {
             if (!player1Path || player1Path.length < 2) {
                 alert("Rataa ei voi tallentaa, koska polku on liian lyhyt!");
                 return;
@@ -1153,7 +1170,7 @@ export function initializeGame() {
             }
         }
         // Handle victory screen saving (only for new courses)
-        else if (gameState === 'SHOWING_SCORE') {
+        else if (gameState === GAME_STATES.SHOWING_SCORE) {
             if (!smoothedPath || smoothedPath.length < 2) {
                 console.error("Cannot save: No valid Player 1 path exists.");
                 alert("Rataa ei voi tallentaa, koska Pelaaja 1:n polkua ei ole piirretty kunnolla.");
@@ -1216,7 +1233,7 @@ export function initializeGame() {
         defeatFlagged = false; // Reset defeat flag
         isFinishing = false; // Reset finishing flag
         carConfig = null; // Reset car configuration
-        gameState = 'P2_WAITING';
+        gameState = GAME_STATES.P2_WAITING;
         statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
 
         // Reset car state
@@ -1669,7 +1686,7 @@ export function initializeGame() {
 
     const animateCar = () => {
         // Exit if we are already in the finishing delay or showing score
-        if (isFinishing || gameState === 'SHOWING_SCORE') {
+        if (isFinishing || gameState === GAME_STATES.SHOWING_SCORE) {
             // Start particle animation if not already running
             if (!particleAnimationFrame && activeParticles.length > 0) {
                 animateParticles();
@@ -1764,7 +1781,7 @@ export function initializeGame() {
 
             // Set timeout to show defeat screen after 1 second
             setTimeout(() => {
-                gameState = 'SHOWING_SCORE';
+                gameState = GAME_STATES.SHOWING_SCORE;
                 drawFailState();
             }, 1000);
 
@@ -1887,7 +1904,7 @@ export function initializeGame() {
 
             // Set timeout to show the appropriate screen after 1 second
             setTimeout(() => {
-                gameState = 'SHOWING_SCORE';
+                gameState = GAME_STATES.SHOWING_SCORE;
                 if (defeatFlagged) {
                     drawFailState();
                 } else {
@@ -1954,7 +1971,7 @@ export function initializeGame() {
     widthSlider.addEventListener('input', (e) => {
         P1_WIDTH = parseInt(e.target.value);
         widthValue.textContent = P1_WIDTH;
-        if (gameState === 'P1_DRAWING' && player1Path.length > 0) {
+        if (gameState === GAME_STATES.P1_DRAWING && player1Path.length > 0) {
             redrawAll();
         }
     });
