@@ -446,6 +446,12 @@ export function initializeGame() {
             gameStates.engineSound = null;
         }
 
+        // Stop screech sound if playing
+        if (gameStates.screechSound) {
+            gameStates.screechSound.stop();
+            gameStates.screechSound = null;
+        }
+
         // Clear the canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -650,6 +656,10 @@ export function initializeGame() {
                     gameStates.gameState = GAME_STATES.CAR_ANIMATING;
                     statusDiv.textContent = 'Pelaaja 2: Polku valmis! Odota autoa...';
                     playSound('success');
+
+                    // Apply smoothing to player 2 path for better car animation
+                    gameStates.player2Path = smoothPath(gameStates.player2Path);
+
                     redrawAllHelper();
                     drawPath(ctx, gameStates.player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
 
@@ -885,6 +895,12 @@ export function initializeGame() {
         if (gameStates.engineSound) {
             gameStates.engineSound.stop(); // Call the stop method provided by createV8EngineSound
             gameStates.engineSound = null;
+        }
+
+        // Stop screech sound if playing
+        if (gameStates.screechSound) {
+            gameStates.screechSound.stop();
+            gameStates.screechSound = null;
         }
 
         redrawAllHelper();
@@ -1200,6 +1216,13 @@ export function initializeGame() {
             gameStates.engineSound.stop();
             gameStates.engineSound = null;
         }
+
+        // Stop screech sound if playing
+        if (gameStates.screechSound) {
+            gameStates.screechSound.stop();
+            gameStates.screechSound = null;
+        }
+
         gameStates.carProgress = 0;
         gameStates.carPosition = { x: 0, y: 0 };
         gameStates.carAngle = 0;
@@ -1373,6 +1396,7 @@ export function initializeGame() {
         gameStates.previousCarAngle = carState.previousAngle;
         gameStates.currentWheelAngle = carState.currentWheelAngle;
         gameStates.currentSpeed = carState.currentSpeed;
+        gameStates.isSkidding = carState.isSkidding; // Update isSkidding flag for sound effects
         // Note: carState.trail and carState.tireMarks are updated by reference
 
         // Handle result from updateCarPhysics
@@ -1389,6 +1413,12 @@ export function initializeGame() {
                 gameStates.engineSound = null;
             }
 
+            // Stop screech sound if it's playing
+            if (gameStates.screechSound) {
+                gameStates.screechSound.stop();
+                gameStates.screechSound = null;
+            }
+
             // Set timeout to show defeat screen after 1 second
             setTimeout(() => {
                 gameStates.gameState = GAME_STATES.SHOWING_SCORE;
@@ -1398,15 +1428,21 @@ export function initializeGame() {
             return;
         }
 
-        // Determine if the car should be screeching based on angle change
-        const deltaAngle = gameStates.currentCarAngle - gameStates.previousCarAngle;
-        const turnRateThreshold = 0.03; // Radians change per frame threshold
-        const speedThreshold = CAR_PIXEL_SPEED * 0.5; // Minimum speed to screech
-        const shouldBeScreeching = gameStates.isSkidding || (Math.abs(deltaAngle) > turnRateThreshold && gameStates.currentSpeed > speedThreshold);
+        // Determine if the car should be screeching - only when drifting or braking hard
+        const shouldBeScreeching = gameStates.isSkidding;
 
-        // Check if screeching just started
-        if (shouldBeScreeching && !gameStates.isScreeching) {
-            playSound('screech');
+        // Manage the screech sound
+        if (shouldBeScreeching) {
+            // Start screech sound if not already playing
+            if (!gameStates.screechSound) {
+                gameStates.screechSound = playSound('screech');
+            }
+        } else {
+            // Stop screech sound if it's playing
+            if (gameStates.screechSound) {
+                gameStates.screechSound.stop();
+                gameStates.screechSound = null;
+            }
         }
 
         // Update the screeching state for the current frame
@@ -1449,6 +1485,12 @@ export function initializeGame() {
             if (gameStates.engineSound) {
                 gameStates.engineSound.stop();
                 gameStates.engineSound = null;
+            }
+
+            // Stop screech sound if it's playing
+            if (gameStates.screechSound) {
+                gameStates.screechSound.stop();
+                gameStates.screechSound = null;
             }
 
             // Cancel future animation frames

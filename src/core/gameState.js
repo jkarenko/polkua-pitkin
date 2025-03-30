@@ -37,7 +37,7 @@ export class GameState {
             SMOOTHING_WINDOW: 10,
             CURVATURE_WINDOW: 10,
             MAX_CURVATURE: 0.9,
-            ACCELERATION_RATE: 0.005,
+            ACCELERATION_RATE: 0.01,
             BASE_DECELERATION_RATE: 0.8,
             CURVE_LOOK_AHEAD: 0.15,
             MAX_DECELERATION_RATE: 1.2,

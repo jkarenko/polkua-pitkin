@@ -87,7 +87,7 @@ function playSound(type, pitchFactor = 0) {
         case 'engine':
             return createV8EngineSound();
         case 'screech':
-            return playScreech(oscillator, gainNode);
+            return playScreech();
         case 'honk':
             return playHonk([0.3]);
     }
@@ -240,15 +240,54 @@ function createEngineSound() {
     };
 }
 
-function playScreech(oscillator, gainNode) {
-    const startTime = audioCtx.currentTime;
+function playScreech() {
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    const baseFreq = 800;
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
     oscillator.type = 'sawtooth';
-    oscillator.frequency.setValueAtTime(800, startTime);
-    oscillator.frequency.linearRampToValueAtTime(1200, startTime + 0.2);
-    gainNode.gain.setValueAtTime(0.1, startTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.3);
-    oscillator.start(startTime);
-    oscillator.stop(startTime + 0.3);
+    oscillator.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
+    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+    oscillator.start(audioCtx.currentTime);
+
+    let isPlaying = true;
+
+    // Create a function to update the sound (can be used for variations)
+    const updateSound = () => {
+        if (!isPlaying) return;
+
+        const currentTime = audioCtx.currentTime;
+        // Add some randomness to the frequency for a more realistic tire screech
+        const randomFreq = baseFreq + Math.random() * baseFreq * 0.5;
+        oscillator.frequency.cancelScheduledValues(currentTime);
+        oscillator.frequency.setValueAtTime(oscillator.frequency.value, currentTime);
+        oscillator.frequency.linearRampToValueAtTime(randomFreq, currentTime + 0.1);
+    };
+
+    // Start a loop to continuously update the sound
+    const interval = setInterval(updateSound, 100);
+
+    return {
+        stop: () => {
+            if (!isPlaying) return;
+            isPlaying = false;
+
+            clearInterval(interval);
+
+            const stopTime = audioCtx.currentTime;
+            gainNode.gain.cancelScheduledValues(stopTime);
+            gainNode.gain.setValueAtTime(gainNode.gain.value, stopTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, stopTime + 0.1);
+
+            setTimeout(() => {
+                oscillator.stop();
+            }, 100);
+        }
+    };
 }
 
 export function setHasInteracted(value) {
