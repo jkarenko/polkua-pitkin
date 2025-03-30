@@ -11,12 +11,12 @@ export function initializeGame() {
     const doneButton = document.getElementById('doneButton');
     const resetButton = document.getElementById('resetButton');
     const statusDiv = document.getElementById('status');
-    const savedCoursesButton = document.getElementById('savedCoursesButton'); // New button
-    const savedCoursesSidebar = document.getElementById('savedCoursesSidebar'); // New sidebar
-    const sidebarContent = document.getElementById('sidebarContent'); // Sidebar content area
-    const closeSidebarButton = document.getElementById('closeSidebarButton'); // Close button
-    const trashCan = document.getElementById('trashCan'); // Trashcan element
-    const saveCourseButton = document.getElementById('saveCourseButton'); // Get reference to the new button
+    const savedCoursesButton = document.getElementById('savedCoursesButton');
+    const savedCoursesSidebar = document.getElementById('savedCoursesSidebar');
+    const sidebarContent = document.getElementById('sidebarContent');
+    const closeSidebarButton = document.getElementById('closeSidebarButton');
+    const trashCan = document.getElementById('trashCan');
+    const saveCourseButton = document.getElementById('saveCourseButton');
 
     // --- Constants ---
     const P1_COLOR = 'lightblue';
@@ -34,7 +34,7 @@ export function initializeGame() {
     const MAX_PATH_LENGTH_FACTOR = 1.20;
     const THUMBNAIL_WIDTH = 240;
     const THUMBNAIL_HEIGHT = 150;
-    const THUMBNAIL_PADDING = 10; // Padding inside thumbnail canvas
+    const THUMBNAIL_PADDING = 10;
 
     // Car constants
     const CAR_PIXEL_SPEED = 2;
@@ -50,16 +50,9 @@ export function initializeGame() {
     const FINISH_PREPARATION_DISTANCE = 0.2;
     const MIN_FINISH_SPEED = 0.3;
     const WHEEL_TURN_SPEED = 0.15;
-    const CAR_TURN_SPEED = 0.1; // This might be less relevant now
     const MAX_WHEEL_ANGLE = Math.PI / 4;
-    const WHEELBASE = 20; // Distance between front and rear axles (adjust as needed)
-    // Skid Constants
-    const HANDBRAKE_CURVATURE_THRESHOLD = 0.75; // Curvature needed to initiate skid (adjust 0.0 to MAX_CURVATURE)
-    const MIN_SKID_SPEED_FACTOR = 0.01; // Minimum speed (factor of CAR_PIXEL_SPEED) to initiate skid
-    const SKID_EXIT_CURVATURE = 0.5;   // Curvature below which skid stops
-    const MIN_SKID_EXIT_SPEED_FACTOR = 0.1; // Minimum speed below which skid stops
-    const SKID_TURN_RATE_MULTIPLIER = 0.15; // How quickly the car rotates during skid (adjust)
-    const SKID_DECELERATION_FACTOR = 0.95; // Speed multiplier each frame during skid (e.g., 0.95 = 5% reduction)
+    const WHEELBASE = 20;
+    const SKID_TURN_RATE_MULTIPLIER = 0.15;
 
     // --- State ---
     let gameState = 'P1_DRAWING';
@@ -80,10 +73,9 @@ export function initializeGame() {
     let defeatFlagged = false;
     let decorations = [];
     let tireMarks = [];
-    // Add these state variables for session high score tracking
     let currentSessionHighScore = 0;
     let currentSessionBestPlayer2Path = [];
-    let draggedCourseId = null; // Track the ID of the course being dragged
+    let draggedCourseId = null;
     let isFinishing = false; // Flag for the 1-second delay at the finish
     let activeParticles = []; // Array to store active emoji particles
 
@@ -97,13 +89,10 @@ export function initializeGame() {
     let currentSpeed = 0;
     let carTrail = [];
     let engineSound = null;
-    let lastAngleChange = 0;
-    let carConfig = null;  // Add car configuration state
-    let previousCarAngle = 0; // <--- Add state for previous car angle
-    let isScreeching = false; // <--- Add state for current screech status
-    let isSkidding = false;   // <--- Add state for handbrake skid
-
-    // Add this after the other animation frame variables
+    let carConfig = null;
+    let previousCarAngle = 0;
+    let isScreeching = false;
+    let isSkidding = false;
     let particleAnimationFrame = null;
 
     // --- Helper Functions ---
@@ -156,8 +145,8 @@ export function initializeGame() {
         }
 
         // For Player 2's drawing phase, check against all segments up to current position plus look-ahead
-        const lookAheadSegments = 3; // Number of segments to look ahead
-        const startIdx = 0; // Always start from beginning
+        const lookAheadSegments = 3;
+        const startIdx = 0;
         const endIdx = Math.min(currentActiveSegmentIndex + lookAheadSegments, path.length - 1);
 
         let minDistance = Infinity;
@@ -191,7 +180,6 @@ export function initializeGame() {
             return 0;
         }
 
-        // For Player 1's drawing phase, use the original behavior
         if (gameState === 'P1_DRAWING') {
             let minDistanceSq = Infinity;
             let lengthUpToProjection = 0;
@@ -260,7 +248,6 @@ export function initializeGame() {
         }
 
         // Get points before and after current position
-        const lookAhead = CURVATURE_WINDOW;
         const currentPoint = getPointAlongPath(progress, path);
         const prevPoint = getPointAlongPath(Math.max(0, progress - 0.01), path);
         const nextPoint = getPointAlongPath(Math.min(1, progress + 0.01), path);
@@ -274,7 +261,9 @@ export function initializeGame() {
         const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
         const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
 
-        if (mag1 === 0 || mag2 === 0) return 0;
+        if (mag1 === 0 || mag2 === 0) {
+            return 0;
+        }
 
         const cosAngle = dot / (mag1 * mag2);
         // Clamp cosAngle to [-1, 1] to avoid floating point errors
@@ -442,7 +431,6 @@ export function initializeGame() {
         startMarker = { ...player1Path[0], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
         endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
 
-        // Create smoothed path for car to follow -- **Ensure this represents the P1 path structure**
         // smoothedPath = smoothPath(player1Path); // Option 1: Use actual smoothed P1 path
         smoothedPath = player1Path; // Option 2: Use the raw P1 path (current implementation)
         // This is the path that will be hashed and saved. DO NOT MODIFY LATER.
@@ -481,25 +469,18 @@ export function initializeGame() {
             }
         }
 
-        // Generate decorations
-        //const decorationDensity = 5; // <-- INCREASED from 0.8. Try values like 5 or 10
-        //const decorationOffset = P1_WIDTH * 1.5; // Adjust offset based on path width
-        //decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
-
         redrawAll();
     };
 
     const getPointAlongPath = (progress, path) => {
-        // Always calculate based on the specific 'path' provided
         if (!path || path.length < 2) {
             return path[0] || { x: 0, y: 0 };
-        } // Handle empty or single-point path
+        }
 
-        // Calculate total length of the *provided* path for accurate progress mapping
         let pathTotalLength = calculatePathLength(path);
         if (pathTotalLength === 0) {
             return path[0];
-        } // Avoid division by zero
+        }
 
         let targetDistance = progress * pathTotalLength;
         let accumulatedLength = 0;
@@ -570,7 +551,6 @@ export function initializeGame() {
         victoryScreen.style.display = 'flex';
     };
 
-    // Add new function to handle highscore updates
     const updateHighScore = (courseId, newScore) => {
         try {
             let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
@@ -652,11 +632,11 @@ export function initializeGame() {
         }
 
         // Draw gauge border using the same path
-        ctx.beginPath(); // Start new path for border
+        ctx.beginPath();
         ctx.roundRect(x, y, gaugeWidth, gaugeHeight, 5);
         ctx.strokeStyle = '#666';
         ctx.lineWidth = 2;
-        ctx.stroke(); // Apply stroke to the border path
+        ctx.stroke();
 
         // Draw fuel text
         ctx.fillStyle = '#000';
