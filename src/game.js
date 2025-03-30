@@ -10,6 +10,7 @@ import {
     CAR_CONSTANTS,
     UI_CONSTANTS
 } from './core/gameState.js';
+import { drawPath } from './ui/drawPath.js';
 
 // Export all the game constants and initialization
 export function initializeGame() {
@@ -315,55 +316,7 @@ export function initializeGame() {
     };
 
     // --- Drawing Functions ---
-    const drawPath = (path, color, width, isDrawing = false) => {
-        if (path.length < 1) {
-            return;
-        }
 
-        if (!isDrawing) {
-            // Draw the outline (black path with slightly larger width) only for completed paths
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = width + 4; // 2 pixels wider on each side
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            ctx.beginPath();
-            ctx.moveTo(path[0].x, path[0].y);
-            for (let i = 1; i < path.length; i++) {
-                ctx.lineTo(path[i].x, path[i].y);
-            }
-            ctx.stroke();
-        }
-
-        // Draw the main colored path
-        ctx.strokeStyle = color;
-        ctx.lineWidth = width;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        for (let i = 1; i < path.length; i++) {
-            ctx.lineTo(path[i].x, path[i].y);
-        }
-        ctx.stroke();
-
-        // Draw the dashed guide line for Player 1's path on top of the main path
-        if (!isDrawing && color === P1_COLOR) {
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([5, 5]); // Create dashed line pattern
-            ctx.lineCap = 'butt';
-            ctx.lineJoin = 'miter';
-            ctx.beginPath();
-            ctx.moveTo(path[0].x, path[0].y);
-            for (let i = 1; i < path.length; i++) {
-                ctx.lineTo(path[i].x, path[i].y);
-            }
-            ctx.stroke();
-            ctx.setLineDash([]); // Reset dash pattern
-        }
-    };
 
     const drawCircle = (center, radius, color) => {
         ctx.fillStyle = color;
@@ -675,14 +628,14 @@ export function initializeGame() {
 
         // 1. Draw base P1 path elements (always behind everything else)
         if (startMarker && endMarker) {
-            drawPath(player1Path, P1_COLOR, P1_WIDTH, false);
+            drawPath(ctx, player1Path, P1_COLOR, P1_WIDTH, false, P1_COLOR);
             drawCircle(startMarker, startMarker.radius, START_COLOR);
             drawCircle(endMarker, endMarker.radius, END_COLOR);
             progressMarkers.slice(1, -1).forEach(marker => {
                 drawDirectionalMarker(marker.point, marker.direction);
             });
         } else if (player1Path.length > 0) {
-            drawPath(player1Path, P1_COLOR, P1_WIDTH, gameState === GAME_STATES.P1_DRAWING);
+            drawPath(ctx, player1Path, P1_COLOR, P1_WIDTH, gameState === GAME_STATES.P1_DRAWING, P1_COLOR);
         }
 
         // 2. Draw the car trail if animating or finished (behind decorations and car)
@@ -854,7 +807,7 @@ export function initializeGame() {
                 gameState = GAME_STATES.P2_DRAWING;
                 statusDiv.textContent = 'Pelaaja 2: Seuraa polkua! Pysy sinisen viivan sisällä!';
                 redrawAll();
-                drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
+                drawPath(ctx, player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
             } else {
                 statusDiv.textContent = 'Pelaaja 2: Aloita piirtäminen harmaasta ympyrästä!';
             }
@@ -1019,7 +972,7 @@ export function initializeGame() {
                     statusDiv.textContent = 'Pelaaja 2: Polku valmis! Odota autoa...';
                     playSound('success');
                     redrawAll();
-                    drawPath(player2Path, P2_COLOR, P2_WIDTH, false);
+                    drawPath(ctx, player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
 
                     // Reset car state and start animation
                     carProgress = 0;
@@ -1901,6 +1854,7 @@ export function initializeGame() {
 
             // Perform one final redraw to show the car at the finish line
             redrawAll();
+            drawPath(ctx, player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
 
             // Set timeout to show the appropriate screen after 1 second
             setTimeout(() => {
