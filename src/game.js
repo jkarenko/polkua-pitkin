@@ -102,8 +102,6 @@ export function initializeGame() {
     let previousCarAngle = 0; // <--- Add state for previous car angle
     let isScreeching = false; // <--- Add state for current screech status
     let isSkidding = false;   // <--- Add state for handbrake skid
-    const TURN_THRESHOLD = 0.5;
-    const SOUND_COOLDOWN = 500; // We might not need SOUND_COOLDOWN anymore
 
     // Add this after the other animation frame variables
     let particleAnimationFrame = null;
@@ -527,7 +525,7 @@ export function initializeGame() {
         }
         // Fallback: return the last point if progress is 1 or more
         return path[path.length - 1];
-    }
+    };
 
     const showVictoryScreen = (score) => {
         const victoryScreen = document.getElementById('victoryScreen');
@@ -864,7 +862,7 @@ export function initializeGame() {
                 statusDiv.textContent = 'Pelaaja 2: Aloita piirtäminen harmaasta ympyrästä!';
             }
         }
-    }
+    };
 
     const checkFuelLimit = (currentPosition, distanceMoved, isDrawingPhase = false) => {
         if (defeatFlagged) {
@@ -1087,24 +1085,14 @@ export function initializeGame() {
         // Perfect score (100) when average distance is 0
         // 0 points when average distance is SCORE_THRESHOLD or greater
         return Math.max(0, Math.round(SCORE_POINTS * (1 - avgDistance / SCORE_THRESHOLD)));
-    }
+    };
 
     const getScoreMessage = (score) => {
-        if (score >= 90) {
-            return "Vau! Upea suoritus! 🌟🌟🌟🌟🌟";
-        }
-        if (score >= 80) {
-            return "Ajoit varsin hienosti! 🌟🌟🌟🌟";
-        }
-        if (score >= 70) {
-            return "Hyvä! Pysyit tiellä! 🌟🌟🌟";
-        }
-        if (score >= 60) {
-            return "Pystyt parempaankin! 🌟🌟";
-        }
-        if (score >= 50) {
-            return "Nyt meni vähän mutkitellen! 🌟";
-        }
+        if (score >= 90) { return "Vau! Upea suoritus! 🌟🌟🌟🌟🌟"; }
+        if (score >= 80) { return "Ajoit varsin hienosti! 🌟🌟🌟🌟"; }
+        if (score >= 70) { return "Hyvä! Pysyit tiellä! 🌟🌟🌟"; }
+        if (score >= 60) { return "Pystyt parempaankin! 🌟🌟"; }
+        if (score >= 50) { return "Nyt meni vähän mutkitellen! 🌟"; }
         return "Kokeile uudelleen! 💪";
     };
 
@@ -1119,7 +1107,7 @@ export function initializeGame() {
         canvas.style.height = `${window.innerHeight}px`;
 
         redrawAll(); // Redraw contents after resize
-    }
+    };
 
     const saveCourseNow = () => {
         if (gameState !== 'P1_DRAWING' && gameState !== 'SHOWING_SCORE') {
@@ -1699,73 +1687,6 @@ export function initializeGame() {
         hideTrashCan();
     };
 
-    // Setup Event Listeners
-    canvas.addEventListener('mousedown', handleStart);
-    canvas.addEventListener('mousemove', handleMove);
-    canvas.addEventListener('mouseup', handleEnd);
-    canvas.addEventListener('mouseout', handleEnd); // Treat leaving canvas like mouseup
-
-    canvas.addEventListener('touchstart', handleStart, { passive: false });
-    canvas.addEventListener('touchmove', handleMove, { passive: false });
-    canvas.addEventListener('touchend', handleEnd, { passive: false });
-    canvas.addEventListener('touchcancel', handleEnd, { passive: false }); // Treat cancel like end
-
-    doneButton.addEventListener('click', handleP1Done);
-    resetButton.addEventListener('click', resetGame);
-    saveCourseButton.addEventListener('click', saveCourseNow); // Main save button
-    document.getElementById('victorySaveButton').addEventListener('click', saveCourseNow); // Victory screen save button
-
-    // Add width slider event listener
-    const widthSlider = document.getElementById('widthSlider');
-    const widthValue = document.getElementById('widthValue');
-    widthSlider.addEventListener('input', (e) => {
-        P1_WIDTH = parseInt(e.target.value);
-        widthValue.textContent = P1_WIDTH;
-        if (gameState === 'P1_DRAWING' && player1Path.length > 0) {
-            redrawAll();
-        }
-    });
-
-    window.addEventListener('resize', resizeCanvas);
-
-    // Add event listeners for game screens
-    document.getElementById('victoryReplayButton').addEventListener('click', replayLevel);
-    document.getElementById('victoryNewGameButton').addEventListener('click', resetGame);
-    document.getElementById('defeatReplayButton').addEventListener('click', replayLevel);
-    document.getElementById('defeatNewGameButton').addEventListener('click', resetGame);
-
-    // Add listeners for new UI elements
-    savedCoursesButton.addEventListener('click', openSidebar);
-    closeSidebarButton.addEventListener('click', closeSidebar);
-
-    // Add Drag/Drop listeners for canvas (loading)
-    canvas.addEventListener('dragover', handleCanvasDragOver);
-    canvas.addEventListener('drop', handleCanvasDrop);
-
-    // Add Drag/Drop listeners for trashcan (deleting)
-    trashCan.addEventListener('dragover', handleTrashDragOver);
-    trashCan.addEventListener('dragleave', handleTrashDragLeave); // Handle leaving the trash area
-    trashCan.addEventListener('drop', handleTrashDrop);
-
-    // Initial setup - WRAP these calls
-    document.addEventListener('DOMContentLoaded', (event) => {
-        resizeCanvas();
-        resetGame(); // Initialize game state AFTER DOM is fully loaded
-    });
-
-    // Remove the original calls outside the listener:
-    // resizeCanvas(); // <-- Remove this line
-    // resetGame(); // <-- Remove this line
-
-    const isPointInButton = (point, buttonX, buttonY, buttonWidth, buttonHeight) => {
-        return point.x >= buttonX &&
-            point.x <= buttonX + buttonWidth &&
-            point.y >= buttonY &&
-            point.y <= buttonY + buttonHeight;
-    };
-
-    
-
     const animateCar = () => {
         // Exit if we are already in the finishing delay or showing score
         if (isFinishing || gameState === 'SHOWING_SCORE') {
@@ -1784,7 +1705,6 @@ export function initializeGame() {
 
         // --- Car Movement Calculation ---
         // Calculate curvature, speed etc. based on the path the car is ACTUALLY following (player2Path)
-        const posOnP2Path = getPointAlongPath(carProgress, player2Path);
         const currentCurvature = calculateCurvature(carProgress, player2Path);
         const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
         const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path);
@@ -2025,15 +1945,9 @@ export function initializeGame() {
         return simpleHash(pathString);
     };
 
-    
-
-    // --- Course Loading/Deleting ---
     doneButton.style.display = 'none'; // P1 is done by loading
     saveCourseButton.style.display = 'none'; // Hide P1 save button too
     resetButton.style.display = 'inline-block';
-
-    // Setup Event Listeners
-    saveCourseButton.addEventListener('click', saveCourseNow); // Add listener for the new button
 
     const animateParticles = () => {
         // Clear the canvas and redraw everything
@@ -2051,7 +1965,57 @@ export function initializeGame() {
         }
     };
 
-    // Initialize the game
+    // Setup Event Listeners
+    saveCourseButton.addEventListener('click', saveCourseNow); // Add listener for the new button
+
+    // Add width slider event listener
+    const widthSlider = document.getElementById('widthSlider');
+    const widthValue = document.getElementById('widthValue');
+    widthSlider.addEventListener('input', (e) => {
+        P1_WIDTH = parseInt(e.target.value);
+        widthValue.textContent = P1_WIDTH;
+        if (gameState === 'P1_DRAWING' && player1Path.length > 0) {
+            redrawAll();
+        }
+    });
+
+    canvas.addEventListener('mousedown', handleStart);
+    canvas.addEventListener('mousemove', handleMove);
+    canvas.addEventListener('mouseup', handleEnd);
+    canvas.addEventListener('mouseout', handleEnd); // Treat leaving canvas like mouseup
+
+    canvas.addEventListener('touchstart', handleStart, { passive: false });
+    canvas.addEventListener('touchmove', handleMove, { passive: false });
+    canvas.addEventListener('touchend', handleEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleEnd, { passive: false }); // Treat cancel like end
+
+    doneButton.addEventListener('click', handleP1Done);
+    resetButton.addEventListener('click', resetGame);
+    saveCourseButton.addEventListener('click', saveCourseNow); // Main save button
+    document.getElementById('victorySaveButton').addEventListener('click', saveCourseNow); // Victory screen save button
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // Add event listeners for game screens
+    document.getElementById('victoryReplayButton').addEventListener('click', replayLevel);
+    document.getElementById('victoryNewGameButton').addEventListener('click', resetGame);
+    document.getElementById('defeatReplayButton').addEventListener('click', replayLevel);
+    document.getElementById('defeatNewGameButton').addEventListener('click', resetGame);
+
+    // Add listeners for new UI elements
+    savedCoursesButton.addEventListener('click', openSidebar);
+    closeSidebarButton.addEventListener('click', closeSidebar);
+
+    // Add Drag/Drop listeners for canvas (loading)
+    canvas.addEventListener('dragover', handleCanvasDragOver);
+    canvas.addEventListener('drop', handleCanvasDrop);
+
+    // Add Drag/Drop listeners for trashcan (deleting)
+    trashCan.addEventListener('dragover', handleTrashDragOver);
+    trashCan.addEventListener('dragleave', handleTrashDragLeave); // Handle leaving the trash area
+    trashCan.addEventListener('drop', handleTrashDrop);
+
+    // Initial setup
     document.addEventListener('DOMContentLoaded', (event) => {
         resizeCanvas();
         resetGame();
