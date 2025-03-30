@@ -1,15 +1,9 @@
 // Import existing modules
-import { drawCar, createCar } from './car.js';
+import {drawCar, createCar, CAR_CONSTANTS} from './car.js';
 import { playSound, playHonk, setHasInteracted } from './audio.js';
 import { generateDecorationsForPath, generateDecorationsAlongSegment } from './decoration.js';
 import { createCrashEffect, createVictoryCelebration, createOutOfFuelEffect, updateAndDrawParticles } from './effects.js';
-import {
-    GAME_STATES,
-    VISUAL_CONSTANTS,
-    GAMEPLAY_CONSTANTS,
-    CAR_CONSTANTS,
-    UI_CONSTANTS
-} from './core/gameState.js';
+import { GAME_STATES, GameState } from './core/gameState.js';
 import { drawPath } from './ui/drawPath.js';
 import { drawCircle } from './ui/drawCircle.js';
 // Export all the game constants and initialization
@@ -25,9 +19,9 @@ export function initializeGame() {
     const closeSidebarButton = document.getElementById('closeSidebarButton');
     const trashCan = document.getElementById('trashCan');
     const saveCourseButton = document.getElementById('saveCourseButton');
+    const gameStates = new GameState();
 
-    // --- Constants ---
-    let { P1_WIDTH } = VISUAL_CONSTANTS;
+    let { P1_WIDTH } = gameStates.visualConstants;
     const {
         P1_COLOR,
         P2_COLOR,
@@ -37,20 +31,20 @@ export function initializeGame() {
         MARKER_RADIUS_FACTOR,
         HIT_THRESHOLD_FACTOR,
         START_END_SNAP_RADIUS_FACTOR
-    } = VISUAL_CONSTANTS;
+    } = gameStates.visualConstants;
 
     const {
         PROGRESS_INTERVAL,
         SCORE_THRESHOLD,
         SCORE_POINTS,
         MAX_PATH_LENGTH_FACTOR
-    } = GAMEPLAY_CONSTANTS;
+    } = gameStates.gameplayConstants;
 
     const {
         THUMBNAIL_WIDTH,
         THUMBNAIL_HEIGHT,
         THUMBNAIL_PADDING
-    } = UI_CONSTANTS;
+    } = gameStates.uiConstants;
 
     // Car constants
     const {
@@ -70,48 +64,7 @@ export function initializeGame() {
         MAX_WHEEL_ANGLE,
         WHEELBASE,
         SKID_TURN_RATE_MULTIPLIER
-    } = CAR_CONSTANTS;
-
-    // --- State ---
-    let gameState = GAME_STATES.P1_DRAWING;
-    let player1Path = [];
-    let smoothedPath = [];
-    let player2Path = [];
-    let isDrawing = false;
-    let player1TotalLength = 0;
-    let lastPlayedProgressMilestone = 0;
-    let startMarker = null;
-    let endMarker = null;
-    let progressMarkers = [];
-    let currentActiveSegmentIndex = 0;
-    let maxAllowedPathLength = 0;
-    let currentPathLength = 0;
-    let fuelConsumed = 0;
-    let previousCarPosition = null;
-    let defeatFlagged = false;
-    let decorations = [];
-    let tireMarks = [];
-    let currentSessionHighScore = 0;
-    let currentSessionBestPlayer2Path = [];
-    let draggedCourseId = null;
-    let isFinishing = false; // Flag for the 1-second delay at the finish
-    let activeParticles = []; // Array to store active emoji particles
-
-    // Car state
-    let carProgress = 0;
-    let carAnimationFrame = null;
-    let carPosition = { x: 0, y: 0 };
-    let carAngle = 0;
-    let currentWheelAngle = 0;
-    let currentCarAngle = 0;
-    let currentSpeed = 0;
-    let carTrail = [];
-    let engineSound = null;
-    let carConfig = null;
-    let previousCarAngle = 0;
-    let isScreeching = false;
-    let isSkidding = false;
-    let particleAnimationFrame = null;
+    } = gameStates.carConstants;
 
     // --- Helper Functions ---
     const getEventCoords = (e) => {
@@ -150,7 +103,7 @@ export function initializeGame() {
         } // Path is just a point or empty
 
         // For Player 1's drawing phase, use the original behavior
-        if (gameState === GAME_STATES.P1_DRAWING) {
+        if (gameStates.gameState === GAME_STATES.P1_DRAWING) {
             let minDistance = Infinity;
             for (let i = 0; i < path.length - 1; i++) {
                 minDistance = Math.min(minDistance, pointLineSegmentDistance(point, path[i], path[i + 1]));
@@ -165,7 +118,7 @@ export function initializeGame() {
         // For Player 2's drawing phase, check against all segments up to current position plus look-ahead
         const lookAheadSegments = 3;
         const startIdx = 0;
-        const endIdx = Math.min(currentActiveSegmentIndex + lookAheadSegments, path.length - 1);
+        const endIdx = Math.min(gameStates.currentActiveSegmentIndex + lookAheadSegments, path.length - 1);
 
         let minDistance = Infinity;
         for (let i = startIdx; i <= endIdx; i++) {
@@ -175,10 +128,10 @@ export function initializeGame() {
         }
 
         // If we're near the end of the current segment, advance to the next one
-        if (currentActiveSegmentIndex < path.length - 1) {
-            const currentSegmentEnd = path[currentActiveSegmentIndex + 1];
+        if (gameStates.currentActiveSegmentIndex < path.length - 1) {
+            const currentSegmentEnd = path[gameStates.currentActiveSegmentIndex + 1];
             if (dist(point, currentSegmentEnd) <= threshold * 1.5) {
-                currentActiveSegmentIndex++;
+                gameStates.currentActiveSegmentIndex++;
             }
         }
 
@@ -194,11 +147,11 @@ export function initializeGame() {
     };
 
     const getProgressAlongPath = (point, path) => {
-        if (path.length < 2 || player1TotalLength === 0) {
+        if (path.length < 2 || gameStates.player1TotalLength === 0) {
             return 0;
         }
 
-        if (gameState === GAME_STATES.P1_DRAWING) {
+        if (gameStates.gameState === GAME_STATES.P1_DRAWING) {
             let minDistanceSq = Infinity;
             let lengthUpToProjection = 0;
             let accumulatedLength = 0;
@@ -231,7 +184,7 @@ export function initializeGame() {
                 lengthUpToProjection = accumulatedLength;
             }
 
-            return lengthUpToProjection / player1TotalLength;
+            return lengthUpToProjection / gameStates.player1TotalLength;
         }
 
         // For Player 2's drawing phase, calculate progress based on current active segment
@@ -239,14 +192,14 @@ export function initializeGame() {
         let currentSegmentProgress = 0;
 
         // Calculate length up to current active segment
-        for (let i = 0; i < currentActiveSegmentIndex; i++) {
+        for (let i = 0; i < gameStates.currentActiveSegmentIndex; i++) {
             accumulatedLength += dist(path[i], path[i + 1]);
         }
 
         // Calculate progress within current segment
-        if (currentActiveSegmentIndex < path.length - 1) {
-            const currentStart = path[currentActiveSegmentIndex];
-            const currentEnd = path[currentActiveSegmentIndex + 1];
+        if (gameStates.currentActiveSegmentIndex < path.length - 1) {
+            const currentStart = path[gameStates.currentActiveSegmentIndex];
+            const currentEnd = path[gameStates.currentActiveSegmentIndex + 1];
             const segmentLength = dist(currentStart, currentEnd);
             const l2 = distSq(currentStart, currentEnd);
 
@@ -257,7 +210,7 @@ export function initializeGame() {
             }
         }
 
-        return (accumulatedLength + currentSegmentProgress) / player1TotalLength;
+        return (accumulatedLength + currentSegmentProgress) / gameStates.player1TotalLength;
     };
 
     const calculateCurvature = (progress, path) => {
@@ -321,8 +274,8 @@ export function initializeGame() {
 
 
     const drawDirectionalMarker = (point, direction, color = 'rgba(0, 0, 0, 0.3)') => {
-        const arrowLength = P1_WIDTH * 0; // Length of the arrow
-        const arrowWidth = P1_WIDTH * 0.2; // Reduced width of the arrow head for a thinner line
+        const arrowLength = 0;
+        const arrowWidth = P1_WIDTH * 0.2;
 
         ctx.save();
         ctx.translate(point.x, point.y);
@@ -376,49 +329,49 @@ export function initializeGame() {
     };
 
     const handleP1Done = () => {
-        if (player1Path.length < 2) {
+        if (gameStates.player1Path.length < 2) {
             statusDiv.textContent = "Pelaaja 1: Polku on liian lyhyt! Piirrä pitempi polku.";
             return;
         }
 
-        gameState = GAME_STATES.P2_WAITING;
-        isDrawing = false;
+        gameStates.gameState = GAME_STATES.P2_WAITING;
+        gameStates.isDrawing = false;
         doneButton.style.display = 'none';
         saveCourseButton.style.display = 'none'; // Hide save button during P2 phase
         resetButton.style.display = 'inline-block';
         savedCoursesButton.style.display = 'none';
         statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
 
-        player1TotalLength = calculatePathLength(player1Path);
-        maxAllowedPathLength = player1TotalLength * MAX_PATH_LENGTH_FACTOR;
-        currentPathLength = 0;
-        const markerRadius = P1_WIDTH / 2 * MARKER_RADIUS_FACTOR;
-        startMarker = { ...player1Path[0], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
-        endMarker = { ...player1Path[player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * START_END_SNAP_RADIUS_FACTOR };
+        gameStates.player1TotalLength = calculatePathLength(gameStates.player1Path);
+        gameStates.maxAllowedPathLength = gameStates.player1TotalLength * gameStates.MAX_PATH_LENGTH_FACTOR;
+        gameStates.currentPathLength = 0;
+        const markerRadius = P1_WIDTH / 2 * gameStates.MARKER_RADIUS_FACTOR;
+        gameStates.startMarker = { ...gameStates.player1Path[0], radius: markerRadius, snapRadius: markerRadius * gameStates.START_END_SNAP_RADIUS_FACTOR };
+        gameStates.endMarker = { ...gameStates.player1Path[gameStates.player1Path.length - 1], radius: markerRadius, snapRadius: markerRadius * gameStates.START_END_SNAP_RADIUS_FACTOR };
 
         // smoothedPath = smoothPath(player1Path); // Option 1: Use actual smoothed P1 path
-        smoothedPath = player1Path; // Option 2: Use the raw P1 path (current implementation)
+        gameStates.smoothedPath = gameStates.player1Path; // Option 2: Use the raw P1 path (current implementation)
         // This is the path that will be hashed and saved. DO NOT MODIFY LATER.
 
         // Calculate progress markers based on the original player1Path length
-        progressMarkers = [];
+        gameStates.progressMarkers = [];
         for (let i = 0; i <= 10; i++) { // 10 segments (0% to 100%)
-            const targetProgress = i * PROGRESS_INTERVAL;
+            const targetProgress = i * gameStates.PROGRESS_INTERVAL;
             let accumulatedLength = 0;
             let markerPoint = null;
             let markerDirection = null;
 
-            for (let j = 0; j < player1Path.length - 1; j++) {
-                const segmentLength = dist(player1Path[j], player1Path[j + 1]);
-                if (accumulatedLength + segmentLength >= targetProgress * player1TotalLength) {
-                    const t = (targetProgress * player1TotalLength - accumulatedLength) / segmentLength;
+            for (let j = 0; j < gameStates.player1Path.length - 1; j++) {
+                const segmentLength = dist(gameStates.player1Path[j], gameStates.player1Path[j + 1]);
+                if (accumulatedLength + segmentLength >= targetProgress * gameStates.player1TotalLength) {
+                    const t = (targetProgress * gameStates.player1TotalLength - accumulatedLength) / segmentLength;
                     markerPoint = {
-                        x: player1Path[j].x + t * (player1Path[j + 1].x - player1Path[j].x),
-                        y: player1Path[j].y + t * (player1Path[j + 1].y - player1Path[j].y)
+                        x: gameStates.player1Path[j].x + t * (gameStates.player1Path[j + 1].x - gameStates.player1Path[j].x),
+                        y: gameStates.player1Path[j].y + t * (gameStates.player1Path[j + 1].y - gameStates.player1Path[j].y)
                     };
                     markerDirection = {
-                        x: player1Path[j + 1].x - player1Path[j].x,
-                        y: player1Path[j + 1].y - player1Path[j].y
+                        x: gameStates.player1Path[j + 1].x - gameStates.player1Path[j].x,
+                        y: gameStates.player1Path[j + 1].y - gameStates.player1Path[j].y
                     };
                     // Normalize direction
                     const length = Math.sqrt(markerDirection.x * markerDirection.x + markerDirection.y * markerDirection.y);
@@ -430,7 +383,7 @@ export function initializeGame() {
             }
 
             if (markerPoint && markerDirection) {
-                progressMarkers.push({ point: markerPoint, direction: markerDirection });
+                gameStates.progressMarkers.push({ point: markerPoint, direction: markerDirection });
             }
         }
 
@@ -481,14 +434,14 @@ export function initializeGame() {
         const newRecordMsg = document.getElementById('newRecordMessage');
 
         // Store the high score *before* this run
-        const previousSessionHighScore = currentSessionHighScore;
+        const previousSessionHighScore = gameStates.currentSessionHighScore;
         let newRecordSet = false;
 
         // Update session high score if this run was better
-        if (score > currentSessionHighScore) {
-            currentSessionHighScore = score;
-            currentSessionBestPlayer2Path = [...player2Path];
-            console.log(`New session high score: ${currentSessionHighScore}`);
+        if (score > gameStates.currentSessionHighScore) {
+            gameStates.currentSessionHighScore = score;
+            gameStates.currentSessionBestPlayer2Path = [...gameStates.player2Path];
+            console.log(`New session high score: ${gameStates.currentSessionHighScore}`);
             if (score > previousSessionHighScore) {
                 newRecordSet = true;
                 // Automatically update highscore if this is a loaded course
@@ -524,7 +477,7 @@ export function initializeGame() {
             if (courseIndex !== -1) {
                 // Update the existing course with new highscore
                 savedCourses[courseIndex].highScore = newScore;
-                savedCourses[courseIndex].highScorePlayer2Path = currentSessionBestPlayer2Path;
+                savedCourses[courseIndex].highScorePlayer2Path = gameStates.currentSessionBestPlayer2Path;
                 localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
                 console.log(`Automatically updated highscore for course ${courseId}`);
 
@@ -545,7 +498,7 @@ export function initializeGame() {
 
     const drawFuelGauge = () => {
         // Only draw if P2 is drawing or car is animating
-        if (gameState !== GAME_STATES.P2_DRAWING && gameState !== GAME_STATES.CAR_ANIMATING) {
+        if (gameStates.gameState !== GAME_STATES.P2_DRAWING && gameStates.gameState!== GAME_STATES.CAR_ANIMATING) {
             return;
         }
 
@@ -564,16 +517,16 @@ export function initializeGame() {
 
         // Calculate remaining fuel percentage
         let remainingFuel;
-        if (gameState === GAME_STATES.CAR_ANIMATING) {
+        if (gameStates.gameState === GAME_STATES.CAR_ANIMATING) {
             // Use actual fuel consumed during animation
-            if (defeatFlagged) {
-                remainingFuel = Math.max(0, 1 - (fuelConsumed * MAX_PATH_LENGTH_FACTOR / maxAllowedPathLength));
+            if (gameStates.defeatFlagged) {
+                remainingFuel = Math.max(0, 1 - (gameStates.fuelConsumed * MAX_PATH_LENGTH_FACTOR / gameStates.maxAllowedPathLength));
             } else {
-                remainingFuel = Math.max(0, 1 - (fuelConsumed / maxAllowedPathLength));
+                remainingFuel = Math.max(0, 1 - (gameStates.fuelConsumed / gameStates.maxAllowedPathLength));
             }
-        } else { // gameState === GAME_STATES.P2_DRAWING
+        } else { // gameState.gameState=== GAME_STATES.P2_DRAWING
             // Use path length drawn so far
-            remainingFuel = Math.max(0, 1 - (currentPathLength / maxAllowedPathLength));
+            remainingFuel = Math.max(0, 1 - (gameStates.currentPathLength / gameStates.maxAllowedPathLength));
         }
 
         // Draw fuel level
@@ -622,24 +575,24 @@ export function initializeGame() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // 1. Draw base P1 path elements (always behind everything else)
-        if (startMarker && endMarker) {
-            drawPath(ctx, player1Path, P1_COLOR, P1_WIDTH, false, P1_COLOR);
-            drawCircle(ctx, startMarker, startMarker.radius, START_COLOR);
-            drawCircle(ctx, endMarker, endMarker.radius, END_COLOR);
-            progressMarkers.slice(1, -1).forEach(marker => {
+        if (gameStates.startMarker && gameStates.endMarker) {
+            drawPath(ctx, gameStates.player1Path, P1_COLOR, P1_WIDTH, false, P1_COLOR);
+            drawCircle(ctx, gameStates.startMarker, gameStates.startMarker.radius, START_COLOR);
+            drawCircle(ctx, gameStates.endMarker, gameStates.endMarker.radius, END_COLOR);
+            gameStates.progressMarkers.slice(1, -1).forEach(marker => {
                 drawDirectionalMarker(marker.point, marker.direction);
             });
-        } else if (player1Path.length > 0) {
-            drawPath(ctx, player1Path, P1_COLOR, P1_WIDTH, gameState === GAME_STATES.P1_DRAWING, P1_COLOR);
+        } else if (gameStates.player1Path.length > 0) {
+            drawPath(ctx, gameStates.player1Path, P1_COLOR, P1_WIDTH, gameStates.gameState === GAME_STATES.P1_DRAWING, P1_COLOR);
         }
 
         // 2. Draw the car trail if animating or finished (behind decorations and car)
         // Draw the trail even when finished/showing score
-        if ((gameState === GAME_STATES.CAR_ANIMATING || gameState === GAME_STATES.SHOWING_SCORE || isFinishing) && carTrail.length > 1) {
+        if ((gameStates.gameState === GAME_STATES.CAR_ANIMATING || gameStates.gameState === GAME_STATES.SHOWING_SCORE || gameStates.gameState.isFinishing) && gameStates.carTrail.length > 1) {
             ctx.beginPath();
-            ctx.moveTo(carTrail[0].x, carTrail[0].y);
-            for (let i = 1; i < carTrail.length; i++) {
-                ctx.lineTo(carTrail[i].x, carTrail[i].y);
+            ctx.moveTo(gameStates.carTrail[0].x, gameStates.carTrail[0].y);
+            for (let i = 1; i < gameStates.carTrail.length; i++) {
+                ctx.lineTo(gameStates.carTrail[i].x, gameStates.carTrail[i].y);
             }
             ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; // Red trail color
             ctx.lineWidth = 3;
@@ -650,11 +603,11 @@ export function initializeGame() {
 
         // 2.5 Draw Tire Marks (after trail, before decorations/car)
         // Draw tire marks even when finished/showing score
-        if (gameState === GAME_STATES.CAR_ANIMATING || gameState === GAME_STATES.SHOWING_SCORE || isFinishing) {
+        if (gameStates.gameState === GAME_STATES.CAR_ANIMATING || gameStates.gameState === GAME_STATES.SHOWING_SCORE || gameStates.gameState.isFinishing) {
             ctx.strokeStyle = 'rgba(40, 40, 40, 0.7)'; // Dark semi-transparent color for lines
             ctx.lineWidth = 3; // Width of the tire mark lines
             ctx.lineCap = 'round'; // Make line ends rounded
-            tireMarks.forEach(mark => {
+            gameStates.tireMarks.forEach(mark => {
                 if (mark.start && mark.end) { // Ensure we have both points
                     ctx.beginPath();
                     ctx.moveTo(mark.start.x, mark.start.y);
@@ -666,21 +619,21 @@ export function initializeGame() {
 
 
         // 3. Create a list of drawable items (decorations, P2 path, car)
-        let drawableItems = [...decorations]; // Start with decorations
+        let drawableItems = [...gameStates.decorations]; // Start with decorations
 
         // Add P2 Path wrapper ONLY if P2 is drawing or waiting (NO LONGER NEEDED - Trail covers it)
-        // if ((gameState === GAME_STATES.P2_DRAWING || gameState === GAME_STATES.P2_WAITING) && player2Path.length > 0) { ... } // Remove or comment out
+        // if ((gameState === GAME_STATES.P2_DRAWING || gameState.gameState === GAME_STATES.P2_WAITING) && player2Path.length > 0) { ... } // Remove or comment out
 
         // Add ONLY the Car sprite wrapper if animating OR finished/showing score
-        if ((gameState === GAME_STATES.CAR_ANIMATING || gameState === GAME_STATES.SHOWING_SCORE || isFinishing) && carPosition) {
+        if ((gameStates.gameState === GAME_STATES.CAR_ANIMATING || gameStates.gameState === GAME_STATES.SHOWING_SCORE || gameStates.gameState.isFinishing) && gameStates.carPosition) {
             drawableItems.push({
                 getLowestY: () => {
                     const carHeight = CAR_CONSTANTS?.HEIGHT || 20;
-                    return carPosition.y + carHeight / 2;
+                    return gameStates.carPosition.y + carHeight / 2;
                 },
                 draw: (context) => {
                     // Only draw the car sprite here
-                    drawCar(context, carPosition, currentCarAngle, currentWheelAngle, carConfig || { color: '#FF4444' });
+                    drawCar(context, gameStates.carPosition, gameStates.currentCarAngle, gameStates.currentWheelAngle, gameStates.carConfig || { color: '#FF4444' });
                 }
             });
         }
@@ -698,12 +651,12 @@ export function initializeGame() {
 
     // --- Game Logic ---
     const resetPlayer2 = () => {
-        player2Path = [];
-        isDrawing = false;
-        lastPlayedProgressMilestone = 0;
-        currentActiveSegmentIndex = 0; // Reset the active segment index
-        currentPathLength = 0; // Reset path length
-        gameState = GAME_STATES.P2_WAITING;
+        gameStates.player2Path = [];
+        gameStates.isDrawing = false;
+        gameStates.lastPlayedProgressMilestone = 0;
+        gameStates.currentActiveSegmentIndex = 0; // Reset the active segment index
+        gameStates.currentPathLength = 0; // Reset path length
+        gameStates.gameState = GAME_STATES.P2_WAITING;
         statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
         redrawAll();
         saveCourseButton.style.display = 'none'; // Hide P1 save button
@@ -714,30 +667,11 @@ export function initializeGame() {
         document.getElementById('victoryScreen').style.display = 'none';
         document.getElementById('defeatScreen').style.display = 'none';
 
-        gameState = GAME_STATES.P1_DRAWING;
-        player1Path = [];
-        smoothedPath = [];
-        player2Path = [];
-        isDrawing = false;
-        player1TotalLength = 0;
-        lastPlayedProgressMilestone = 0;
-        startMarker = null;
-        endMarker = null;
-        progressMarkers = [];
-        currentActiveSegmentIndex = 0;
-        maxAllowedPathLength = 0; // Reset max allowed path length
-        currentPathLength = 0;
-        fuelConsumed = 0; // Reset fuel consumed
-        previousCarPosition = null; // Reset previous car position tracking
-        defeatFlagged = false; // Reset defeat flag
-        isFinishing = false; // Reset finishing flag
-        carConfig = null; // Reset car configuration
-        decorations = []; // Clear decorations array
-        tireMarks = []; // Clear tire marks
-        carTrail = []; // Clear car trail array
-        // Reset session high score when starting a completely new game
-        currentSessionHighScore = 0;
-        currentSessionBestPlayer2Path = [];
+        // Reset all game states
+        gameStates.reset();
+
+        // Additional UI-specific resets
+        gameStates.gameState = GAME_STATES.P1_DRAWING;
         doneButton.style.display = 'inline-block';
         saveCourseButton.style.display = 'inline-block'; // Show save button
         saveCourseButton.disabled = false; // Ensure it's enabled
@@ -745,35 +679,30 @@ export function initializeGame() {
         resetButton.style.display = 'none';
         statusDiv.textContent = 'Pelaaja 1: Piirrä polku.';
 
-        // Reset car state
-        if (carAnimationFrame) {
-            cancelAnimationFrame(carAnimationFrame);
-            carAnimationFrame = null;
+        // Cancel any ongoing animations
+        if (gameStates.carAnimationFrame) {
+            cancelAnimationFrame(gameStates.carAnimationFrame);
+            gameStates.carAnimationFrame = null;
         }
-        carProgress = 0;
-        carPosition = { x: 0, y: 0 };
-        carAngle = 0;
 
         // Stop engine sound if playing
-        if (engineSound) {
-            engineSound.stop(); // Call the stop method provided by createV8EngineSound
-            engineSound = null;
+        if (gameStates.engineSound) {
+            gameStates.engineSound.stop(); // Call the stop method provided by createV8EngineSound
+            gameStates.engineSound = null;
         }
 
+        // Clear the canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        isScreeching = false; // <--- Reset screeching state
-        isSkidding = false; // Add this
+
+        // Update UI elements
         savedCoursesButton.style.display = 'inline-block'; // Show button in P1 phase
         closeSidebar(); // Ensure sidebar is closed on new game
         hideTrashCan(); // Ensure trashcan is hidden
 
-        // Clear particles
-        activeParticles = [];
-
         // Cancel particle animation if running
-        if (particleAnimationFrame) {
-            cancelAnimationFrame(particleAnimationFrame);
-            particleAnimationFrame = null;
+        if (gameStates.particleAnimationFrame) {
+            cancelAnimationFrame(gameStates.particleAnimationFrame);
+            gameStates.particleAnimationFrame = null;
         }
 
         window.currentLoadedCourseId = null; // Clear the loaded course ID
@@ -789,20 +718,20 @@ export function initializeGame() {
 
         const pos = getEventCoords(e);
 
-        if (gameState === GAME_STATES.P1_DRAWING) {
-            isDrawing = true;
-            player1Path = [pos];
-            decorations = []; // Clear all decorations when starting to draw
+        if (gameStates.gameState === GAME_STATES.P1_DRAWING) {
+            gameStates.isDrawing = true;
+            gameStates.player1Path = [pos];
+            gameStates.decorations = []; // Clear all decorations when starting to draw
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-        } else if (gameState === GAME_STATES.P2_WAITING) {
-            if (startMarker && dist(pos, startMarker) <= startMarker.snapRadius) {
-                isDrawing = true;
-                player2Path = [pos];
-                lastPlayedProgressMilestone = 0;
-                gameState = GAME_STATES.P2_DRAWING;
+        } else if (gameStates.gameState === GAME_STATES.P2_WAITING) {
+            if (gameStates.startMarker && dist(pos, gameStates.startMarker) <= gameStates.startMarker.snapRadius) {
+                gameStates.isDrawing = true;
+                gameStates.player2Path = [pos];
+                gameStates.lastPlayedProgressMilestone = 0;
+                gameStates.gameState = GAME_STATES.P2_DRAWING;
                 statusDiv.textContent = 'Pelaaja 2: Seuraa polkua! Pysy sinisen viivan sisällä!';
                 redrawAll();
-                drawPath(ctx, player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
+                drawPath(ctx, gameStates.player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
             } else {
                 statusDiv.textContent = 'Pelaaja 2: Aloita piirtäminen harmaasta ympyrästä!';
             }
@@ -810,25 +739,25 @@ export function initializeGame() {
     };
 
     const checkFuelLimit = (currentPosition, distanceMoved, isDrawingPhase = false) => {
-        if (defeatFlagged) {
+        if (gameStates.defeatFlagged) {
             return true; // Already defeated
         }
 
         const effectivePathLength = isDrawingPhase ?
-            getProgressAlongPath(currentPosition, player1Path) * player1TotalLength :
-            fuelConsumed + distanceMoved;
+            getProgressAlongPath(currentPosition, gameStates.player1Path) * gameStates.player1TotalLength :
+            gameStates.fuelConsumed + distanceMoved;
 
-        if (effectivePathLength > maxAllowedPathLength) {
-            defeatFlagged = true;
+        if (effectivePathLength > gameStates.maxAllowedPathLength) {
+            gameStates.defeatFlagged = true;
             playSound('alarm');
             playSound('alarm');
             statusDiv.textContent = 'Pelaaja 2: Polttoaine loppui! Yritä ajaa suoremmin.';
 
             // Add crash effect at the current position
-            activeParticles.push(...createOutOfFuelEffect(currentPosition.x, currentPosition.y));
+            gameStates.activeParticles.push(...createOutOfFuelEffect(currentPosition.x, currentPosition.y));
 
             // Start particle animation immediately
-            if (!particleAnimationFrame) {
+            if (!gameStates.particleAnimationFrame) {
                 animateParticles();
             }
 
@@ -838,20 +767,20 @@ export function initializeGame() {
     };
 
     const handleMove = (e) => {
-        if (!isDrawing || (e.touches && e.touches.length > 1)) {
+        if (!gameStates.isDrawing || (e.touches && e.touches.length > 1)) {
             return;
         }
         e.preventDefault();
 
         const pos = getEventCoords(e);
-        const lastPos = (gameState === GAME_STATES.P1_DRAWING ? player1Path : player2Path).slice(-1)[0];
+        const lastPos = (gameStates.gameState === GAME_STATES.P1_DRAWING ? gameStates.player1Path : gameStates.player2Path).slice(-1)[0];
 
         if (pos.x === lastPos.x && pos.y === lastPos.y) {
             return;
         }
 
-        if (gameState === GAME_STATES.P1_DRAWING) {
-            player1Path.push(pos);
+        if (gameStates.gameState === GAME_STATES.P1_DRAWING) {
+            gameStates.player1Path.push(pos);
             ctx.beginPath();
             ctx.moveTo(lastPos.x, lastPos.y);
             ctx.lineTo(pos.x, pos.y);
@@ -863,7 +792,7 @@ export function initializeGame() {
 
             // Remove decorations that are under the current segment
             const erasureRadius = P1_WIDTH / 2; // Radius to check for decorations to remove
-            decorations = decorations.filter(decoration => {
+            gameStates.decorations = gameStates.decorations.filter(decoration => {
                 const distance = pointLineSegmentDistance(decoration.position, lastPos, pos);
                 return distance > erasureRadius;
             });
@@ -877,9 +806,9 @@ export function initializeGame() {
             const minDistanceToPath = P1_WIDTH * 1.2; // Slightly larger than the path width
             const validDecorations = newDecorations.filter(decoration => {
                 // Check distance to all existing path segments
-                for (let i = 0; i < player1Path.length - 1; i++) {
-                    const segmentStart = player1Path[i];
-                    const segmentEnd = player1Path[i + 1];
+                for (let i = 0; i < gameStates.player1Path.length - 1; i++) {
+                    const segmentStart = gameStates.player1Path[i];
+                    const segmentEnd = gameStates.player1Path[i + 1];
                     // Skip the current segment as it's already handled by the erasure
                     if (segmentStart === lastPos && segmentEnd === pos) {
                         continue;
@@ -893,12 +822,12 @@ export function initializeGame() {
                 return true;
             });
 
-            decorations = decorations.concat(validDecorations);
+            gameStates.decorations = gameStates.decorations.concat(validDecorations);
             redrawAll();
 
-        } else if (gameState === GAME_STATES.P2_DRAWING) {
-            const threshold = P1_WIDTH / 2 * HIT_THRESHOLD_FACTOR;
-            if (!isPointWithinPath(pos, player1Path, threshold)) {
+        } else if (gameStates.gameState === GAME_STATES.P2_DRAWING) {
+            const threshold = gameStates.P1_WIDTH / 2 * gameStates.HIT_THRESHOLD_FACTOR;
+            if (!isPointWithinPath(pos, gameStates.player1Path, threshold)) {
                 playSound('alarm');
                 resetPlayer2();
                 statusDiv.textContent = 'Pelaaja 2: Hups! Eksyit polulta! Aloita uudelleen alusta.';
@@ -907,12 +836,12 @@ export function initializeGame() {
 
             // Calculate new path length
             const newSegmentLength = dist(lastPos, pos);
-            currentPathLength += newSegmentLength;
+            gameStates.currentPathLength += newSegmentLength;
 
             // Check fuel limit using shared function
             if (checkFuelLimit(pos, newSegmentLength, true)) {
-                isDrawing = false; // Stop drawing
-                gameState = GAME_STATES.SHOWING_SCORE; // Change state to show score
+                gameStates.isDrawing = false; // Stop drawing
+                gameStates.gameState = GAME_STATES.SHOWING_SCORE; // Change state to show score
 
                 // Add 1-second delay before showing defeat screen
                 setTimeout(() => {
@@ -922,7 +851,7 @@ export function initializeGame() {
                 return; // Exit the function without showing defeat screen immediately
             }
 
-            player2Path.push(pos);
+            gameStates.player2Path.push(pos);
 
             ctx.beginPath();
             ctx.moveTo(lastPos.x, lastPos.y);
@@ -933,47 +862,47 @@ export function initializeGame() {
             ctx.lineJoin = 'round';
             ctx.stroke();
 
-            const currentProgress = getProgressAlongPath(pos, player1Path);
+            const currentProgress = getProgressAlongPath(pos, gameStates.player1Path);
             const currentMilestone = Math.floor(currentProgress / PROGRESS_INTERVAL);
 
-            if (currentMilestone > lastPlayedProgressMilestone && currentProgress < 1.0) {
-                lastPlayedProgressMilestone = currentMilestone;
+            if (currentMilestone > gameStates.lastPlayedProgressMilestone && currentProgress < 1.0) {
+                gameStates.lastPlayedProgressMilestone = currentMilestone;
                 playSound('chime', currentProgress);
             }
         }
     };
 
     const handleEnd = (e) => {
-        if (!isDrawing) {
+        if (!gameStates.isDrawing) {
             return;
         }
         e.preventDefault();
 
-        if (gameState === GAME_STATES.P1_DRAWING) {
-            isDrawing = false;
-            if (player1Path.length < 2) {
+        if (gameStates.gameState === GAME_STATES.P1_DRAWING) {
+            gameStates.isDrawing = false;
+            if (gameStates.player1Path.length < 2) {
                 statusDiv.textContent = "Pelaaja 1: Polku on liian lyhyt! Piirrä pitempi polku.";
             } else {
                 statusDiv.textContent = "Pelaaja 1: Paina 'Valmis' tai jatka piirtämistä.";
             }
-        } else if (gameState === GAME_STATES.P2_DRAWING) {
-            const lastPos = player2Path.slice(-1)[0];
-            isDrawing = false;
+        } else if (gameStates.gameState === GAME_STATES.P2_DRAWING) {
+            const lastPos = gameStates.player2Path.slice(-1)[0];
+            gameStates.isDrawing = false;
 
-            if (endMarker && dist(lastPos, endMarker) <= endMarker.snapRadius) {
-                const finalProgress = getProgressAlongPath(lastPos, player1Path);
+            if (gameStates.endMarker && dist(lastPos, gameStates.endMarker) <= gameStates.endMarker.snapRadius) {
+                const finalProgress = getProgressAlongPath(lastPos, gameStates.player1Path);
                 if (finalProgress >= 0.95) {
-                    gameState = GAME_STATES.CAR_ANIMATING;
+                    gameStates.gameState = GAME_STATES.CAR_ANIMATING;
                     statusDiv.textContent = 'Pelaaja 2: Polku valmis! Odota autoa...';
                     playSound('success');
                     redrawAll();
-                    drawPath(ctx, player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
+                    drawPath(ctx, gameStates.player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
 
                     // Reset car state and start animation
-                    carProgress = 0;
-                    carPosition = { ...player2Path[0] };
-                    carAngle = 0;
-                    carConfig = createCar(); // Create new car configuration with random color
+                    gameStates.carProgress = 0;
+                    gameStates.carPosition = { ...gameStates.player2Path[0] };
+                    gameStates.carAngle = 0;
+                    gameStates.carConfig = createCar(); // Create new car configuration with random color
                     animateCar();
                 } else {
                     playSound('alarm');
@@ -989,7 +918,7 @@ export function initializeGame() {
     };
 
     const calculateScore = () => {
-        if (!player2Path || player2Path.length < 2 || !smoothedPath || smoothedPath.length < 2) {
+        if (!gameStates.player2Path || gameStates.player2Path.length < 2 || !gameStates.smoothedPath || gameStates.smoothedPath.length < 2) {
             return 0; // Added check for smoothedPath
         }
 
@@ -997,18 +926,18 @@ export function initializeGame() {
         let validPoints = 0;
 
         // Sample points along Player 2's path
-        for (let i = 0; i < player2Path.length; i++) {
-            const point = player2Path[i];
+        for (let i = 0; i < gameStates.player2Path.length; i++) {
+            const point = gameStates.player2Path[i];
             let minDistance = Infinity;
 
             // Find the closest point on the defined Player 1 course path (smoothedPath)
-            for (let j = 0; j < smoothedPath.length - 1; j++) {
-                const dist = pointLineSegmentDistance(point, smoothedPath[j], smoothedPath[j + 1]);
+            for (let j = 0; j < gameStates.smoothedPath.length - 1; j++) {
+                const dist = pointLineSegmentDistance(point, gameStates.smoothedPath[j], gameStates.smoothedPath[j + 1]);
                 minDistance = Math.min(minDistance, dist);
             }
             // Check distance to the last point of smoothedPath as well
-            if (smoothedPath.length > 0) {
-                minDistance = Math.min(minDistance, dist(point, smoothedPath[smoothedPath.length - 1]));
+            if (gameStates.smoothedPath.length > 0) {
+                minDistance = Math.min(minDistance, dist(point, gameStates.smoothedPath[gameStates.smoothedPath.length - 1]));
             }
 
 
@@ -1055,24 +984,24 @@ export function initializeGame() {
     };
 
     const saveCourseNow = () => {
-        if (gameState !== GAME_STATES.P1_DRAWING && gameState !== GAME_STATES.SHOWING_SCORE) {
+        if (gameStates.gameState !== GAME_STATES.P1_DRAWING && gameStates.gameState !== GAME_STATES.SHOWING_SCORE) {
             console.warn("Attempted to save course outside of valid phases.");
             return;
         }
 
-        const saveButton = gameState === GAME_STATES.P1_DRAWING ?
+        const saveButton = gameStates.gameState === GAME_STATES.P1_DRAWING ?
             document.getElementById('saveCourseButton') :
             document.getElementById('victorySaveButton');
 
         // Handle P1 drawing phase saving as before
-        if (gameState === GAME_STATES.P1_DRAWING) {
-            if (!player1Path || player1Path.length < 2) {
+        if (gameStates.gameState === GAME_STATES.P1_DRAWING) {
+            if (!gameStates.player1Path || gameStates.player1Path.length < 2) {
                 alert("Rataa ei voi tallentaa, koska polku on liian lyhyt!");
                 return;
             }
 
             // Use the current P1 path for hashing and saving
-            const coursePathToSave = [...player1Path]; // Create a copy
+            const coursePathToSave = [...gameStates.player1Path]; // Create a copy
             const courseId = hashPath(coursePathToSave);
             const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
 
@@ -1118,8 +1047,8 @@ export function initializeGame() {
             }
         }
         // Handle victory screen saving (only for new courses)
-        else if (gameState === GAME_STATES.SHOWING_SCORE) {
-            if (!smoothedPath || smoothedPath.length < 2) {
+        else if (gameStates.gameState === GAME_STATES.SHOWING_SCORE) {
+            if (!gameStates.smoothedPath || gameStates.smoothedPath.length < 2) {
                 console.error("Cannot save: No valid Player 1 path exists.");
                 alert("Rataa ei voi tallentaa, koska Pelaaja 1:n polkua ei ole piirretty kunnolla.");
                 return;
@@ -1130,14 +1059,14 @@ export function initializeGame() {
 
                 // Only handle saving new courses - highscores are updated automatically
                 if (!window.currentLoadedCourseId) {
-                    const courseId = hashPath(smoothedPath);
+                    const courseId = hashPath(gameStates.smoothedPath);
                     const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
                     const newCourseData = {
                         id: courseId,
                         name: courseName,
-                        player1Path: smoothedPath,
-                        highScore: currentSessionHighScore,
-                        highScorePlayer2Path: currentSessionBestPlayer2Path
+                        player1Path: gameStates.smoothedPath,
+                        highScore: gameStates.currentSessionHighScore,
+                        highScorePlayer2Path: gameStates.currentSessionBestPlayer2Path
                     };
 
                     const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
@@ -1171,47 +1100,47 @@ export function initializeGame() {
         document.getElementById('defeatScreen').style.display = 'none';
 
         // Keep player1Path and smoothedPath, but reset everything else
-        player2Path = [];
-        isDrawing = false;
-        lastPlayedProgressMilestone = 0;
-        currentActiveSegmentIndex = 0;
-        currentPathLength = 0;
-        fuelConsumed = 0; // Reset fuel consumed for replay
-        previousCarPosition = null; // Reset previous car position tracking
-        defeatFlagged = false; // Reset defeat flag
-        isFinishing = false; // Reset finishing flag
-        carConfig = null; // Reset car configuration
-        gameState = GAME_STATES.P2_WAITING;
+        gameStates.player2Path = [];
+        gameStates.isDrawing = false;
+        gameStates.lastPlayedProgressMilestone = 0;
+        gameStates.currentActiveSegmentIndex = 0;
+        gameStates.currentPathLength = 0;
+        gameStates.fuelConsumed = 0; // Reset fuel consumed for replay
+        gameStates.previousCarPosition = null; // Reset previous car position tracking
+        gameStates.defeatFlagged = false; // Reset defeat flag
+        gameStates.isFinishing = false; // Reset finishing flag
+        gameStates.carConfig = null; // Reset car configuration
+        gameStates.gameState = GAME_STATES.P2_WAITING;
         statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
 
         // Reset car state
-        if (carAnimationFrame) {
-            cancelAnimationFrame(carAnimationFrame);
-            carAnimationFrame = null;
+        if (gameStates.carAnimationFrame) {
+            cancelAnimationFrame(gameStates.carAnimationFrame);
+            gameStates.carAnimationFrame = null;
         }
-        carProgress = 0;
-        carPosition = { x: 0, y: 0 };
-        carAngle = 0;
-        carTrail = []; // Clear car trail array
-        tireMarks = []; // <--- Clear tire marks
-        isScreeching = false; // <--- Reset screeching state
-        isSkidding = false; // Add this
+        gameStates.carProgress = 0;
+        gameStates.carPosition = { x: 0, y: 0 };
+        gameStates.carAngle = 0;
+        gameStates.carTrail = []; // Clear car trail array
+        gameStates.tireMarks = []; // <--- Clear tire marks
+        gameStates.isScreeching = false; // <--- Reset screeching state
+        gameStates.isSkidding = false; // Add this
 
         // Stop engine sound if playing
-        if (engineSound) {
-            engineSound.stop(); // Call the stop method provided by createV8EngineSound
-            engineSound = null;
+        if (gameStates.engineSound) {
+            gameStates.engineSound.stop(); // Call the stop method provided by createV8EngineSound
+            gameStates.engineSound = null;
         }
 
         redrawAll();
 
         // Clear particles
-        activeParticles = [];
+        gameStates.activeParticles = [];
 
         // Cancel particle animation if running
-        if (particleAnimationFrame) {
-            cancelAnimationFrame(particleAnimationFrame);
-            particleAnimationFrame = null;
+        if (gameStates.particleAnimationFrame) {
+            cancelAnimationFrame(gameStates.particleAnimationFrame);
+            gameStates.particleAnimationFrame = null;
         }
     };
 
@@ -1458,36 +1387,36 @@ export function initializeGame() {
         document.getElementById('defeatScreen').style.display = 'none';
 
         // Reset relevant state vars
-        player1Path = courseData.player1Path; // Use the loaded path
-        smoothedPath = [...player1Path]; // Set smoothedPath as well (assuming raw path is used)
-        player2Path = [];
-        isDrawing = false;
-        lastPlayedProgressMilestone = 0;
-        startMarker = null; // Will be recalculated
-        endMarker = null;   // Will be recalculated
-        progressMarkers = [];
-        currentActiveSegmentIndex = 0;
-        maxAllowedPathLength = 0;
-        currentPathLength = 0;
-        fuelConsumed = 0;
-        previousCarPosition = null;
-        defeatFlagged = false;
-        carConfig = null;
+        gameStates.player1Path = courseData.player1Path; // Use the loaded path
+        gameStates.smoothedPath = [...gameStates.player1Path]; // Set smoothedPath as well (assuming raw path is used)
+        gameStates.player2Path = [];
+        gameStates.isDrawing = false;
+        gameStates.lastPlayedProgressMilestone = 0;
+        gameStates.startMarker = null; // Will be recalculated
+        gameStates.endMarker = null;   // Will be recalculated
+        gameStates.progressMarkers = [];
+        gameStates.currentActiveSegmentIndex = 0;
+        gameStates.maxAllowedPathLength = 0;
+        gameStates.currentPathLength = 0;
+        gameStates.fuelConsumed = 0;
+        gameStates.previousCarPosition = null;
+        gameStates.defeatFlagged = false;
+        gameStates.carConfig = null;
 
         // Generate decorations for the loaded path
         const decorationDensity = 5; // Same density as when P1 finishes drawing
         const decorationOffset = P1_WIDTH * 1.5; // Same offset as when P1 finishes
 
         // First generate all decorations
-        let allDecorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
+        let allDecorations = generateDecorationsForPath(gameStates.player1Path, decorationDensity, decorationOffset);
 
         // Then filter out decorations that are too close to the path
         const minDistanceToPath = P1_WIDTH * 1.2; // Same threshold as used during P1 drawing
-        decorations = allDecorations.filter(decoration => {
+        gameStates.decorations = allDecorations.filter(decoration => {
             // Check distance to all path segments
-            for (let i = 0; i < player1Path.length - 1; i++) {
-                const segmentStart = player1Path[i];
-                const segmentEnd = player1Path[i + 1];
+            for (let i = 0; i < gameStates.player1Path.length - 1; i++) {
+                const segmentStart = gameStates.player1Path[i];
+                const segmentEnd = gameStates.player1Path[i + 1];
                 const distance = pointLineSegmentDistance(decoration.position, segmentStart, segmentEnd);
                 if (distance < minDistanceToPath) {
                     return false; // Remove decoration if too close to any segment
@@ -1496,11 +1425,11 @@ export function initializeGame() {
             return true; // Keep decoration if it's far enough from all segments
         });
 
-        tireMarks = [];
+        gameStates.tireMarks = [];
 
         // IMPORTANT: Set the session high score from the loaded course
-        currentSessionHighScore = courseData.highScore || 0;
-        currentSessionBestPlayer2Path = courseData.highScorePlayer2Path || [];
+        gameStates.currentSessionHighScore = courseData.highScore || 0;
+        gameStates.currentSessionBestPlayer2Path = courseData.highScorePlayer2Path || [];
 
         // Update controls visibility
         doneButton.style.display = 'none'; // P1 is done by loading
@@ -1508,22 +1437,23 @@ export function initializeGame() {
         resetButton.style.display = 'inline-block';
 
         // Stop any ongoing car animation/sound
-        if (carAnimationFrame) {
-            cancelAnimationFrame(carAnimationFrame);
-            carAnimationFrame = null;
+        if (gameStates.carAnimationFrame) {
+            cancelAnimationFrame(gameStates.carAnimationFrame);
+            gameStates.carAnimationFrame = null;
         }
-        if (engineSound) {
-            engineSound.stop();
-            engineSound = null;
+        if (gameStates.engineSound) {
+            gameStates.engineSound.stop();
+            gameStates.engineSound = null;
         }
-        carProgress = 0;
-        carPosition = { x: 0, y: 0 };
-        carAngle = 0;
-        carTrail = []; isScreeching = false;
+        gameStates.carProgress = 0;
+        gameStates.carPosition = { x: 0, y: 0 };
+        gameStates.carAngle = 0;
+        gameStates.carTrail = [];
+        gameStates.isScreeching = false;
 
         // Now, trigger the logic similar to handleP1Done to set up P2 phase
         // This recalculates markers, length, decorations based on the loaded player1Path
-        handleP1Done(); // This sets gameState to 'P2_WAITING' and redraws
+        handleP1Done(); // This sets gameState.gameState to 'P2_WAITING' and redraws
 
         closeSidebar(); // Close sidebar after loading
         statusDiv.textContent = `Ladattu rata: ${courseData.name}. Pelaaja 2: Seuraa polkua.`;
@@ -1564,8 +1494,8 @@ export function initializeGame() {
     const handleThumbnailDragStart = (e) => {
         // Check if it's a valid thumbnail container
         if (e.target.classList.contains('thumbnail-container')) {
-            draggedCourseId = e.target.dataset.courseId;
-            e.dataTransfer.setData('text/plain', draggedCourseId);
+            gameStates.draggedCourseId = e.target.dataset.courseId;
+            e.dataTransfer.setData('text/plain', gameStates.draggedCourseId);
             e.dataTransfer.effectAllowed = 'move'; // Indicate moving is allowed
             showTrashCan(); // Show trashcan when dragging starts
             // Optional: Add a dragging style to the thumbnail
@@ -1581,7 +1511,7 @@ export function initializeGame() {
             // Restore appearance
             e.target.style.opacity = '1';
             hideTrashCan(); // Always hide trashcan when drag ends
-            draggedCourseId = null; // Clear the dragged ID
+            gameStates.draggedCourseId = null; // Clear the dragged ID
         }
     };
 
@@ -1634,30 +1564,30 @@ export function initializeGame() {
 
     const animateCar = () => {
         // Exit if we are already in the finishing delay or showing score
-        if (isFinishing || gameState === GAME_STATES.SHOWING_SCORE) {
+        if (gameStates.isFinishing || gameStates.gameState === GAME_STATES.SHOWING_SCORE) {
             // Start particle animation if not already running
-            if (!particleAnimationFrame && activeParticles.length > 0) {
+            if (!gameStates.particleAnimationFrame && gameStates.activeParticles.length > 0) {
                 animateParticles();
             }
             return;
         }
 
         // Initialize previous position on the first frame
-        if (previousCarPosition === null) {
-            previousCarPosition = { ...carPosition };
-            previousCarAngle = currentCarAngle; // Initialize previous angle too
+        if (gameStates.previousCarPosition === null) {
+            gameStates.previousCarPosition = { ...gameStates.carPosition };
+            gameStates.previousCarAngle = gameStates.currentCarAngle; // Initialize previous angle too
         }
 
         // --- Car Movement Calculation ---
         // Calculate curvature, speed etc. based on the path the car is ACTUALLY following (player2Path)
-        const currentCurvature = calculateCurvature(carProgress, player2Path);
-        const upcomingProgress = Math.min(1, carProgress + CURVE_LOOK_AHEAD);
-        const upcomingCurvature = calculateCurvature(upcomingProgress, player2Path);
+        const currentCurvature = calculateCurvature(gameStates.carProgress, gameStates.player2Path);
+        const upcomingProgress = Math.min(1, gameStates.carProgress + CURVE_LOOK_AHEAD);
+        const upcomingCurvature = calculateCurvature(upcomingProgress, gameStates.player2Path);
         const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
         let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
 
         // --- (Speed adjustment near finish - might need rethinking if P1/P2 lengths differ significantly) ---
-        const distanceToFinish = 1 - carProgress;
+        const distanceToFinish = 1 - gameStates.carProgress;
         if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
             const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
             const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
@@ -1666,70 +1596,70 @@ export function initializeGame() {
 
         const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
 
-        if (targetSpeed > currentSpeed) {
-            const speedDiff = targetSpeed - currentSpeed;
+        if (targetSpeed > gameStates.currentSpeed) {
+            const speedDiff = targetSpeed - gameStates.currentSpeed;
             const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED);
-            currentSpeed = Math.min(targetSpeed, currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
+            gameStates.currentSpeed = Math.min(targetSpeed, gameStates.currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
         } else {
-            currentSpeed = Math.max(targetSpeed, currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
+            gameStates.currentSpeed = Math.max(targetSpeed, gameStates.currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
         }
 
         // Calculate next progress BEFORE updating angles
-        const progressIncrement = (currentSpeed / player1TotalLength);
-        const nextProgress = carProgress + progressIncrement;
+        const progressIncrement = (gameStates.currentSpeed / gameStates.player1TotalLength);
+        const nextProgress = gameStates.carProgress + progressIncrement;
 
         // --- Calculate Target Steering and Update Wheel Angle ---
         const lookAheadDistance = 0.05; // How far ahead on the path to look for steering target (adjust as needed)
-        const targetPoint = getPointAlongPath(Math.min(1, carProgress + lookAheadDistance), player2Path);
-        const angleToTarget = Math.atan2(targetPoint.y - carPosition.y, targetPoint.x - carPosition.x);
+        const targetPoint = getPointAlongPath(Math.min(1, gameStates.carProgress + lookAheadDistance), gameStates.player2Path);
+        const angleToTarget = Math.atan2(targetPoint.y - gameStates.carPosition.y, targetPoint.x - gameStates.carPosition.x);
 
-        let steeringAngle = angleToTarget - currentCarAngle;
+        let steeringAngle = angleToTarget - gameStates.currentCarAngle;
         // Normalize the steering angle difference to [-PI, PI]
         steeringAngle = ((steeringAngle + Math.PI) % (2 * Math.PI)) - Math.PI;
 
         // Gradually adjust wheel angle towards the required steering angle
-        const wheelAngleDiff = steeringAngle - currentWheelAngle;
-        currentWheelAngle += Math.sign(wheelAngleDiff) * Math.min(Math.abs(wheelAngleDiff), WHEEL_TURN_SPEED);
+        const wheelAngleDiff = steeringAngle - gameStates.currentWheelAngle;
+        gameStates.currentWheelAngle += Math.sign(wheelAngleDiff) * Math.min(Math.abs(wheelAngleDiff), WHEEL_TURN_SPEED);
         // Clamp wheel angle
-        currentWheelAngle = Math.max(-MAX_WHEEL_ANGLE, Math.min(MAX_WHEEL_ANGLE, currentWheelAngle));
+        gameStates.currentWheelAngle = Math.max(-MAX_WHEEL_ANGLE, Math.min(MAX_WHEEL_ANGLE, gameStates.currentWheelAngle));
 
         // --- Update Car Angle (Heading) based on Physics ---
         let deltaAngle = 0;
-        if (isSkidding) {
+        if (gameStates.isSkidding) {
             // Apply rapid rotation based on steering input during skid
             deltaAngle = steeringAngle * SKID_TURN_RATE_MULTIPLIER;
         }
-        else if (Math.abs(currentWheelAngle) > 0.01 && WHEELBASE > 0) {
+        else if (Math.abs(gameStates.currentWheelAngle) > 0.01 && WHEELBASE > 0) {
             const dt = CAR_ANIMATION_INTERVAL / 1000;
-            const speedPixelsPerSecond = currentSpeed * (1000 / CAR_ANIMATION_INTERVAL);
-            deltaAngle = (speedPixelsPerSecond * Math.tan(currentWheelAngle) / WHEELBASE) * dt;
+            const speedPixelsPerSecond = gameStates.currentSpeed * (1000 / CAR_ANIMATION_INTERVAL);
+            deltaAngle = (speedPixelsPerSecond * Math.tan(gameStates.currentWheelAngle) / WHEELBASE) * dt;
         }
-        currentCarAngle += deltaAngle;
-        currentCarAngle = ((currentCarAngle + Math.PI) % (2 * Math.PI)) - Math.PI; // Normalize
+        gameStates.currentCarAngle += deltaAngle;
+        gameStates.currentCarAngle = ((gameStates.currentCarAngle + Math.PI) % (2 * Math.PI)) - Math.PI; // Normalize
 
 
         // --- Fuel Check ---
         // Get the next position based on path progress
-        const nextPos = getPointAlongPath(nextProgress, player2Path); // Use nextProgress calculated earlier
-        const distanceMoved = dist(carPosition, nextPos); // Use distance based on path progression
+        const nextPos = getPointAlongPath(nextProgress, gameStates.player2Path); // Use nextProgress calculated earlier
+        const distanceMoved = dist(gameStates.carPosition, nextPos); // Use distance based on path progression
 
         // Check if this next move would exceed fuel limit
-        if (checkFuelLimit(carPosition, distanceMoved, false)) {
+        if (checkFuelLimit(gameStates.carPosition, distanceMoved, false)) {
             // Stop the car immediately
-            if (carAnimationFrame) {
-                cancelAnimationFrame(carAnimationFrame);
-                carAnimationFrame = null;
+            if (gameStates.carAnimationFrame) {
+                cancelAnimationFrame(gameStates.carAnimationFrame);
+                gameStates.carAnimationFrame = null;
             }
 
             // Stop engine sound
-            if (engineSound) {
-                engineSound.stop(); // Call the stop method provided by createV8EngineSound
-                engineSound = null;
+            if (gameStates.engineSound) {
+                gameStates.engineSound.stop(); // Call the stop method provided by createV8EngineSound
+                gameStates.engineSound = null;
             }
 
             // Set timeout to show defeat screen after 1 second
             setTimeout(() => {
-                gameState = GAME_STATES.SHOWING_SCORE;
+                gameStates.gameState = GAME_STATES.SHOWING_SCORE;
                 drawFailState();
             }, 1000);
 
@@ -1737,11 +1667,11 @@ export function initializeGame() {
         }
 
         // --- Update Car State ---
-        previousCarPosition = { ...carPosition };
-        carPosition = nextPos; // Position follows the path precisely
-        carProgress = nextProgress;
-        carTrail.push({ ...carPosition });
-        fuelConsumed += distanceMoved; // Fuel consumption based on distance moved along path
+        gameStates.previousCarPosition = { ...gameStates.carPosition };
+        gameStates.carPosition = nextPos; // Position follows the path precisely
+        gameStates.carProgress = nextProgress;
+        gameStates.carTrail.push({ ...gameStates.carPosition });
+        gameStates.fuelConsumed += distanceMoved; // Fuel consumption based on distance moved along path
 
         // --- Update Sounds and Tire Marks (Adjust screeching condition) ---
 
@@ -1750,18 +1680,18 @@ export function initializeGame() {
         const turnRateThreshold = 0.03; // Radians change per frame threshold (adjust)
         const speedThreshold = CAR_PIXEL_SPEED * 0.5; // Minimum speed to screech
         // Force screeching if skidding, otherwise use normal logic
-        const shouldBeScreeching = isSkidding || (Math.abs(deltaAngle) > turnRateThreshold && currentSpeed > speedThreshold);
+        const shouldBeScreeching = gameStates.isSkidding || (Math.abs(deltaAngle) > turnRateThreshold && gameStates.currentSpeed > speedThreshold);
 
         // Check if screeching just started
-        if (shouldBeScreeching && !isScreeching) {
+        if (shouldBeScreeching && !gameStates.isScreeching) {
             playSound('screech');
         }
 
         // Update the screeching state for the current frame
-        isScreeching = shouldBeScreeching;
+        gameStates.isScreeching = shouldBeScreeching;
 
         // Add tire marks if currently screeching
-        if (isScreeching) {
+        if (gameStates.isScreeching) {
             // --- Add Tire Marks --- (Keep this logic, uses currentCarAngle which is now updated differently)
             const carWidth = CAR_CONSTANTS?.WIDTH || 15;
             const carLength = CAR_CONSTANTS?.HEIGHT || 25;
@@ -1783,13 +1713,13 @@ export function initializeGame() {
                 });
             };
 
-            const currentTirePositions = calculateTirePositions(carPosition, currentCarAngle);
-            if (previousCarPosition && previousCarAngle !== undefined) {
-                const previousTirePositions = calculateTirePositions(previousCarPosition, previousCarAngle);
+            const currentTirePositions = calculateTirePositions(gameStates.carPosition, gameStates.currentCarAngle);
+            if (gameStates.previousCarPosition && gameStates.previousCarAngle !== undefined) {
+                const previousTirePositions = calculateTirePositions(gameStates.previousCarPosition, gameStates.previousCarAngle);
 
                 for (let i = 0; i < 4; i++) {
                     if (distSq(previousTirePositions[i], currentTirePositions[i]) > 0.1) {
-                        tireMarks.push({
+                        gameStates.tireMarks.push({
                             start: previousTirePositions[i],
                             end: currentTirePositions[i]
                         });
@@ -1799,13 +1729,13 @@ export function initializeGame() {
         }
 
         // Store current angle as previous for the next frame
-        previousCarAngle = currentCarAngle; // Keep tracking for tire marks
+        gameStates.previousCarAngle = gameStates.currentCarAngle; // Keep tracking for tire marks
 
         // --- Engine Sound --- (Keep as is)
-        if (!engineSound) {
-            engineSound = playSound('engine');
+        if (!gameStates.engineSound) {
+            gameStates.engineSound = playSound('engine');
         } else {
-            engineSound.updateSpeed(currentSpeed, CAR_PIXEL_SPEED);
+            gameStates.engineSound.updateSpeed(gameStates.currentSpeed, CAR_PIXEL_SPEED);
         }
 
         // --- Redraw and Continue --- (Keep as is)
@@ -1813,48 +1743,48 @@ export function initializeGame() {
 
         // --- Finish Line Check --- (Keep as is)
         // Check only if not already in the finishing delay phase
-        if (!isFinishing && carProgress >= 1) {
-            isFinishing = true; // Set the finishing flag
-            currentSpeed = 0; // Stop the car immediately
+        if (!gameStates.isFinishing && gameStates.carProgress >= 1) {
+            gameStates.isFinishing = true; // Set the finishing flag
+            gameStates.currentSpeed = 0; // Stop the car immediately
 
             // Play honk sound immediately IF NOT defeated
-            if (!defeatFlagged) {
+            if (!gameStates.defeatFlagged) {
                 playHonk([0.07, 0.6], [0.07]);
 
                 // Calculate score before showing victory screen
                 const score = calculateScore();
 
                 // Only add victory celebration particles if this is a new high score
-                if (score > currentSessionHighScore) {
+                if (score > gameStates.currentSessionHighScore) {
                     // Add victory celebration particles immediately
-                    activeParticles.push(...createVictoryCelebration(carPosition.x, carPosition.y));
+                    gameStates.activeParticles.push(...createVictoryCelebration(gameStates.carPosition.x, gameStates.carPosition.y));
                     // Start particle animation if not already running
-                    if (!particleAnimationFrame) {
+                    if (!gameStates.particleAnimationFrame) {
                         animateParticles();
                     }
                 }
             }
 
             // Stop engine sound
-            if (engineSound) {
-                engineSound.stop(); // Call the stop method provided by createV8EngineSound
-                engineSound = null;
+            if (gameStates.engineSound) {
+                gameStates.engineSound.stop(); // Call the stop method provided by createV8EngineSound
+                gameStates.engineSound = null;
             }
 
             // Cancel future animation frames
-            if (carAnimationFrame) {
-                cancelAnimationFrame(carAnimationFrame);
-                carAnimationFrame = null;
+            if (gameStates.carAnimationFrame) {
+                cancelAnimationFrame(gameStates.carAnimationFrame);
+                gameStates.carAnimationFrame = null;
             }
 
             // Perform one final redraw to show the car at the finish line
             redrawAll();
-            drawPath(ctx, player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
+            drawPath(ctx, gameStates.player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
 
             // Set timeout to show the appropriate screen after 1 second
             setTimeout(() => {
-                gameState = GAME_STATES.SHOWING_SCORE;
-                if (defeatFlagged) {
+                gameStates.gameState = GAME_STATES.SHOWING_SCORE;
+                if (gameStates.defeatFlagged) {
                     drawFailState();
                 } else {
                     const score = calculateScore();
@@ -1867,8 +1797,8 @@ export function initializeGame() {
         }
 
         // Request next frame only if not finishing
-        if (!isFinishing) {
-            carAnimationFrame = requestAnimationFrame(animateCar);
+        if (!gameStates.isFinishing) {
+            gameStates.carAnimationFrame = requestAnimationFrame(animateCar);
         }
     };
 
@@ -1900,14 +1830,14 @@ export function initializeGame() {
         redrawAll();
 
         // Update and draw particles on top
-        updateAndDrawParticles(ctx, activeParticles);
+        updateAndDrawParticles(ctx, gameStates.activeParticles);
 
         // Continue animation if there are particles
-        if (activeParticles.length > 0) {
-            particleAnimationFrame = requestAnimationFrame(animateParticles);
+        if (gameStates.activeParticles.length > 0) {
+            gameStates.particleAnimationFrame = requestAnimationFrame(animateParticles);
         } else {
             // If no particles left, ensure we clean up
-            particleAnimationFrame = null;
+            gameStates.particleAnimationFrame = null;
         }
     };
 
@@ -1920,7 +1850,7 @@ export function initializeGame() {
     widthSlider.addEventListener('input', (e) => {
         P1_WIDTH = parseInt(e.target.value);
         widthValue.textContent = P1_WIDTH;
-        if (gameState === GAME_STATES.P1_DRAWING && player1Path.length > 0) {
+        if (gameStates.gameState === GAME_STATES.P1_DRAWING && gameStates.player1Path.length > 0) {
             redrawAll();
         }
     });
