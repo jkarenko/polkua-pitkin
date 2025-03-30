@@ -6,6 +6,10 @@ import { createCrashEffect, createVictoryCelebration, createOutOfFuelEffect, upd
 import { GAME_STATES, GameState } from './core/gameState.js';
 import { drawPath } from './ui/drawPath.js';
 import { drawCircle } from './ui/drawCircle.js';
+import { drawDirectionalMarker } from './ui/drawDirectionalMarker.js';
+import { drawFailState } from './ui/drawFailState.js';
+import { drawFuelGauge } from './ui/drawFuelGauge.js';
+import { redrawAll } from './ui/redrawAll.js';
 // Export all the game constants and initialization
 export function initializeGame() {
     const canvas = document.getElementById('gameCanvas');
@@ -273,26 +277,6 @@ export function initializeGame() {
 
 
 
-    const drawDirectionalMarker = (point, direction, color = 'rgba(0, 0, 0, 0.3)') => {
-        const arrowLength = 0;
-        const arrowWidth = P1_WIDTH * 0.2;
-
-        ctx.save();
-        ctx.translate(point.x, point.y);
-        ctx.rotate(Math.atan2(direction.y, direction.x));
-
-        // Draw arrow head as two lines
-        ctx.beginPath();
-        ctx.moveTo(arrowLength, 0);
-        ctx.lineTo(arrowLength - arrowWidth, -arrowWidth / 2);
-        ctx.moveTo(arrowLength, 0);
-        ctx.lineTo(arrowLength - arrowWidth, arrowWidth / 2);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1; // Set a thin line width
-        ctx.stroke();
-
-        ctx.restore();
-    };
 
     const smoothPath = (path) => {
         if (path.length < 3) {
@@ -387,7 +371,7 @@ export function initializeGame() {
             }
         }
 
-        redrawAll();
+        redrawAllHelper();
     };
 
     const getPointAlongPath = (progress, path) => {
@@ -491,162 +475,28 @@ export function initializeGame() {
         }
     };
 
-    const drawFailState = () => {
-        const defeatScreen = document.getElementById('defeatScreen');
-        defeatScreen.style.display = 'flex';
-    };
-
-    const drawFuelGauge = () => {
-        // Only draw if P2 is drawing or car is animating
-        if (gameStates.gameState !== GAME_STATES.P2_DRAWING && gameStates.gameState!== GAME_STATES.CAR_ANIMATING) {
-            return;
-        }
-
-        const gaugeWidth = 200;
-        const gaugeHeight = 30;
-        const x = canvas.width - gaugeWidth - 20;
-        const y = 20;
-
-        ctx.save();
-
-        // Draw background
-        ctx.beginPath();
-        ctx.roundRect(x, y, gaugeWidth, gaugeHeight, 5);
-        ctx.fillStyle = '#ddd';
-        ctx.fill();
-
-        // Calculate remaining fuel percentage
-        let remainingFuel;
-        if (gameStates.gameState === GAME_STATES.CAR_ANIMATING) {
-            // Use actual fuel consumed during animation
-            if (gameStates.defeatFlagged) {
-                remainingFuel = Math.max(0, 1 - (gameStates.fuelConsumed * MAX_PATH_LENGTH_FACTOR / gameStates.maxAllowedPathLength));
-            } else {
-                remainingFuel = Math.max(0, 1 - (gameStates.fuelConsumed / gameStates.maxAllowedPathLength));
-            }
-        } else { // gameState.gameState=== GAME_STATES.P2_DRAWING
-            // Use path length drawn so far
-            remainingFuel = Math.max(0, 1 - (gameStates.currentPathLength / gameStates.maxAllowedPathLength));
-        }
-
-        // Draw fuel level
-        const gradient = ctx.createLinearGradient(x, y, x + gaugeWidth, y);
-        if (remainingFuel > 0.3) {
-            gradient.addColorStop(0, '#4CAF50'); gradient.addColorStop(1, '#45a049');
-        } else if (remainingFuel > 0.1) {
-            gradient.addColorStop(0, '#FFA500'); gradient.addColorStop(1, '#FF8C00');
-        } else {
-            gradient.addColorStop(0, '#FF4444'); gradient.addColorStop(1, '#CC0000');
-        }
-
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        // Ensure fuel bar doesn't go beyond gauge boundaries and handles 0 fuel correctly
-        const fuelWidth = Math.max(0, Math.min(gaugeWidth, gaugeWidth * remainingFuel));
-        // Need to draw a rectangle from the start, not a rounded one if width is small, or handle corners
-        if (fuelWidth > 0) {
-            ctx.roundRect(x, y, fuelWidth, gaugeHeight, 5);
-            ctx.fill();
-        }
-
-        // Draw gauge border using the same path
-        ctx.beginPath();
-        ctx.roundRect(x, y, gaugeWidth, gaugeHeight, 5);
-        ctx.strokeStyle = '#666';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Draw fuel text
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-        ctx.shadowBlur = 2;
-        ctx.shadowOffsetX = 1;
-        ctx.shadowOffsetY = 1;
-
-        ctx.fillText(`Polttoaine: ${Math.round(remainingFuel * 100)}%`, x + gaugeWidth / 2, y + gaugeHeight / 2);
-
-        ctx.restore(); // Restores shadow settings etc.
-    };
-
-    const redrawAll = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // 1. Draw base P1 path elements (always behind everything else)
-        if (gameStates.startMarker && gameStates.endMarker) {
-            drawPath(ctx, gameStates.player1Path, P1_COLOR, P1_WIDTH, false, P1_COLOR);
-            drawCircle(ctx, gameStates.startMarker, gameStates.startMarker.radius, START_COLOR);
-            drawCircle(ctx, gameStates.endMarker, gameStates.endMarker.radius, END_COLOR);
-            gameStates.progressMarkers.slice(1, -1).forEach(marker => {
-                drawDirectionalMarker(marker.point, marker.direction);
-            });
-        } else if (gameStates.player1Path.length > 0) {
-            drawPath(ctx, gameStates.player1Path, P1_COLOR, P1_WIDTH, gameStates.gameState === GAME_STATES.P1_DRAWING, P1_COLOR);
-        }
-
-        // 2. Draw the car trail if animating or finished (behind decorations and car)
-        // Draw the trail even when finished/showing score
-        if ((gameStates.gameState === GAME_STATES.CAR_ANIMATING || gameStates.gameState === GAME_STATES.SHOWING_SCORE || gameStates.gameState.isFinishing) && gameStates.carTrail.length > 1) {
-            ctx.beginPath();
-            ctx.moveTo(gameStates.carTrail[0].x, gameStates.carTrail[0].y);
-            for (let i = 1; i < gameStates.carTrail.length; i++) {
-                ctx.lineTo(gameStates.carTrail[i].x, gameStates.carTrail[i].y);
-            }
-            ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; // Red trail color
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.stroke();
-        }
-
-        // 2.5 Draw Tire Marks (after trail, before decorations/car)
-        // Draw tire marks even when finished/showing score
-        if (gameStates.gameState === GAME_STATES.CAR_ANIMATING || gameStates.gameState === GAME_STATES.SHOWING_SCORE || gameStates.gameState.isFinishing) {
-            ctx.strokeStyle = 'rgba(40, 40, 40, 0.7)'; // Dark semi-transparent color for lines
-            ctx.lineWidth = 3; // Width of the tire mark lines
-            ctx.lineCap = 'round'; // Make line ends rounded
-            gameStates.tireMarks.forEach(mark => {
-                if (mark.start && mark.end) { // Ensure we have both points
-                    ctx.beginPath();
-                    ctx.moveTo(mark.start.x, mark.start.y);
-                    ctx.lineTo(mark.end.x, mark.end.y);
-                    ctx.stroke();
-                }
-            });
-        }
 
 
-        // 3. Create a list of drawable items (decorations, P2 path, car)
-        let drawableItems = [...gameStates.decorations]; // Start with decorations
 
-        // Add P2 Path wrapper ONLY if P2 is drawing or waiting (NO LONGER NEEDED - Trail covers it)
-        // if ((gameState === GAME_STATES.P2_DRAWING || gameState.gameState === GAME_STATES.P2_WAITING) && player2Path.length > 0) { ... } // Remove or comment out
-
-        // Add ONLY the Car sprite wrapper if animating OR finished/showing score
-        if ((gameStates.gameState === GAME_STATES.CAR_ANIMATING || gameStates.gameState === GAME_STATES.SHOWING_SCORE || gameStates.gameState.isFinishing) && gameStates.carPosition) {
-            drawableItems.push({
-                getLowestY: () => {
-                    const carHeight = CAR_CONSTANTS?.HEIGHT || 20;
-                    return gameStates.carPosition.y + carHeight / 2;
-                },
-                draw: (context) => {
-                    // Only draw the car sprite here
-                    drawCar(context, gameStates.carPosition, gameStates.currentCarAngle, gameStates.currentWheelAngle, gameStates.carConfig || { color: '#FF4444' });
-                }
-            });
-        }
-
-        // 4. Sort all drawable items by their lowest Y coordinate
-        drawableItems = drawableItems.filter(item => item && typeof item.getLowestY === 'function' && typeof item.draw === 'function');
-        drawableItems.sort((a, b) => a.getLowestY() - b.getLowestY());
-
-        // 5. Draw the sorted items (decorations, car)
-        drawableItems.forEach(item => item.draw(ctx));
-
-        // 6. Draw UI elements last (on top of everything)
-        drawFuelGauge();
+    // Helper function to call redrawAll with all necessary parameters
+    const redrawAllHelper = () => {
+        redrawAll(
+            ctx, 
+            canvas, 
+            gameStates, 
+            P1_COLOR, 
+            P1_WIDTH, 
+            START_COLOR, 
+            END_COLOR, 
+            GAME_STATES, 
+            MAX_PATH_LENGTH_FACTOR,
+            drawPath,
+            drawCircle,
+            drawDirectionalMarker,
+            drawFuelGauge,
+            drawCar,
+            CAR_CONSTANTS
+        );
     };
 
     // --- Game Logic ---
@@ -658,7 +508,7 @@ export function initializeGame() {
         gameStates.currentPathLength = 0; // Reset path length
         gameStates.gameState = GAME_STATES.P2_WAITING;
         statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
-        redrawAll();
+        redrawAllHelper();
         saveCourseButton.style.display = 'none'; // Hide P1 save button
     };
 
@@ -730,7 +580,7 @@ export function initializeGame() {
                 gameStates.lastPlayedProgressMilestone = 0;
                 gameStates.gameState = GAME_STATES.P2_DRAWING;
                 statusDiv.textContent = 'Pelaaja 2: Seuraa polkua! Pysy sinisen viivan sisällä!';
-                redrawAll();
+                redrawAllHelper();
                 drawPath(ctx, gameStates.player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
             } else {
                 statusDiv.textContent = 'Pelaaja 2: Aloita piirtäminen harmaasta ympyrästä!';
@@ -823,7 +673,7 @@ export function initializeGame() {
             });
 
             gameStates.decorations = gameStates.decorations.concat(validDecorations);
-            redrawAll();
+            redrawAllHelper();
 
         } else if (gameStates.gameState === GAME_STATES.P2_DRAWING) {
             const threshold = gameStates.P1_WIDTH / 2 * gameStates.HIT_THRESHOLD_FACTOR;
@@ -895,7 +745,7 @@ export function initializeGame() {
                     gameStates.gameState = GAME_STATES.CAR_ANIMATING;
                     statusDiv.textContent = 'Pelaaja 2: Polku valmis! Odota autoa...';
                     playSound('success');
-                    redrawAll();
+                    redrawAllHelper();
                     drawPath(ctx, gameStates.player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
 
                     // Reset car state and start animation
@@ -980,7 +830,7 @@ export function initializeGame() {
         canvas.style.width = `${window.innerWidth}px`;
         canvas.style.height = `${window.innerHeight}px`;
 
-        redrawAll(); // Redraw contents after resize
+        redrawAllHelper(); // Redraw contents after resize
     };
 
     const saveCourseNow = () => {
@@ -1132,7 +982,7 @@ export function initializeGame() {
             gameStates.engineSound = null;
         }
 
-        redrawAll();
+        redrawAllHelper();
 
         // Clear particles
         gameStates.activeParticles = [];
