@@ -11,7 +11,7 @@ import {
     UI_CONSTANTS
 } from './core/gameState.js';
 import { drawPath } from './ui/drawPath.js';
-
+import { drawCircle } from './ui/drawCircle.js';
 // Export all the game constants and initialization
 export function initializeGame() {
     const canvas = document.getElementById('gameCanvas');
@@ -318,12 +318,7 @@ export function initializeGame() {
     // --- Drawing Functions ---
 
 
-    const drawCircle = (center, radius, color) => {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-        ctx.fill();
-    };
+
 
     const drawDirectionalMarker = (point, direction, color = 'rgba(0, 0, 0, 0.3)') => {
         const arrowLength = P1_WIDTH * 0; // Length of the arrow
@@ -629,8 +624,8 @@ export function initializeGame() {
         // 1. Draw base P1 path elements (always behind everything else)
         if (startMarker && endMarker) {
             drawPath(ctx, player1Path, P1_COLOR, P1_WIDTH, false, P1_COLOR);
-            drawCircle(startMarker, startMarker.radius, START_COLOR);
-            drawCircle(endMarker, endMarker.radius, END_COLOR);
+            drawCircle(ctx, startMarker, startMarker.radius, START_COLOR);
+            drawCircle(ctx, endMarker, endMarker.radius, END_COLOR);
             progressMarkers.slice(1, -1).forEach(marker => {
                 drawDirectionalMarker(marker.point, marker.direction);
             });
