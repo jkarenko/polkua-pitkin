@@ -2222,8 +2222,25 @@
             // Generate decorations for the loaded path
             const decorationDensity = 5; // Same density as when P1 finishes drawing
             const decorationOffset = P1_WIDTH * 1.5; // Same offset as when P1 finishes
-            decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
             
+            // First generate all decorations
+            let allDecorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
+            
+            // Then filter out decorations that are too close to the path
+            const minDistanceToPath = P1_WIDTH * 1.2; // Same threshold as used during P1 drawing
+            decorations = allDecorations.filter(decoration => {
+                // Check distance to all path segments
+                for (let i = 0; i < player1Path.length - 1; i++) {
+                    const segmentStart = player1Path[i];
+                    const segmentEnd = player1Path[i + 1];
+                    const distance = pointLineSegmentDistance(decoration.position, segmentStart, segmentEnd);
+                    if (distance < minDistanceToPath) {
+                        return false; // Remove decoration if too close to any segment
+                    }
+                }
+                return true; // Keep decoration if it's far enough from all segments
+            });
+
             tireMarks = [];
 
             // IMPORTANT: Set the session high score from the loaded course
