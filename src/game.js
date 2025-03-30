@@ -1,5 +1,17 @@
 // Import existing modules
 import {drawCar, createCar, CAR_CONSTANTS} from './car.js';
+import {
+    distSq,
+    dist,
+    pointLineSegmentDistance,
+    calculatePathLength,
+    getPointAlongPath,
+    calculateCurvature,
+    getSpeedMultiplier,
+    getDecelerationRate,
+    calculateTirePositions,
+    updateCarPhysics
+} from './core/carPhysics.js';
 import { playSound, playHonk, setHasInteracted } from './audio.js';
 import { generateDecorationsForPath, generateDecorationsAlongSegment } from './decoration.js';
 import { createCrashEffect, createVictoryCelebration, createOutOfFuelEffect, updateAndDrawParticles } from './effects.js';
@@ -82,24 +94,7 @@ export function initializeGame() {
         return { x, y };
     };
 
-    const distSq = (p1, p2) => {
-        return (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2;
-    };
-
-    const dist = (p1, p2) => {
-        return Math.sqrt(distSq(p1, p2));
-    };
-
-    const pointLineSegmentDistance = (p, a, b) => {
-        const l2 = distSq(a, b);
-        if (l2 === 0) {
-            return dist(p, a);
-        }
-        let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
-        t = Math.max(0, Math.min(1, t));
-        const projection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
-        return dist(p, projection);
-    };
+    // Utility functions for distance calculations moved to carPhysics.js
 
     const isPointWithinPath = (point, path, threshold) => {
         if (path.length < 2) {
@@ -142,13 +137,7 @@ export function initializeGame() {
         return minDistance <= threshold;
     };
 
-    const calculatePathLength = (path) => {
-        let length = 0;
-        for (let i = 0; i < path.length - 1; i++) {
-            length += dist(path[i], path[i + 1]);
-        }
-        return length;
-    };
+    // calculatePathLength function moved to carPhysics.js
 
     const getProgressAlongPath = (point, path) => {
         if (path.length < 2 || gameStates.player1TotalLength === 0) {
@@ -217,60 +206,10 @@ export function initializeGame() {
         return (accumulatedLength + currentSegmentProgress) / gameStates.player1TotalLength;
     };
 
-    const calculateCurvature = (progress, path) => {
-        if (path.length < 3) {
-            return 0;
-        }
-
-        // Get points before and after current position
-        const currentPoint = getPointAlongPath(progress, path);
-        const prevPoint = getPointAlongPath(Math.max(0, progress - 0.01), path);
-        const nextPoint = getPointAlongPath(Math.min(1, progress + 0.01), path);
-
-        // Calculate vectors
-        const v1 = { x: currentPoint.x - prevPoint.x, y: currentPoint.y - prevPoint.y };
-        const v2 = { x: nextPoint.x - currentPoint.x, y: nextPoint.y - currentPoint.y };
-
-        // Calculate angle between vectors
-        const dot = v1.x * v2.x + v1.y * v2.y;
-        const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-        const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-
-        if (mag1 === 0 || mag2 === 0) {
-            return 0;
-        }
-
-        const cosAngle = dot / (mag1 * mag2);
-        // Clamp cosAngle to [-1, 1] to avoid floating point errors
-        const clampedCos = Math.max(-1, Math.min(1, cosAngle));
-        const angle = Math.acos(clampedCos);
-
-        // Convert angle to curvature (0 to 1)
-        // 0 = straight line, 1 = complete U-turn
-        return Math.min(MAX_CURVATURE, angle / Math.PI);
-    };
-
-    const getSpeedMultiplier = (curvature) => {
-        // Convert curvature (0 to MAX_CURVATURE) to speed multiplier (0.05 to 1.0)
-        // Now at maximum curvature, speed will be reduced to 5% instead of 10%
-        return 1.0 - (curvature / MAX_CURVATURE) * 0.95;
-    };
-
-    const getDecelerationRate = (currentCurvature, upcomingCurvature) => {
-        // If there's a sharp curve coming up, decelerate more aggressively
-        const curveFactor = Math.max(0, upcomingCurvature - currentCurvature);
-
-        // Calculate how close we are to the curve
-        const distanceToCurve = CURVE_LOOK_AHEAD - CURVE_PREPARATION_DISTANCE;
-        const preparationFactor = Math.max(0, Math.min(1, distanceToCurve / CURVE_PREPARATION_DISTANCE));
-
-        // Combine curve sharpness with preparation factor
-        // Add extra deceleration for very sharp curves (curvature > 0.7)
-        const extraSharpCurveFactor = Math.max(0, (upcomingCurvature - 0.7) / 0.2);
-        const combinedFactor = (curveFactor + extraSharpCurveFactor) * preparationFactor;
-
-        return BASE_DECELERATION_RATE + (combinedFactor * (MAX_DECELERATION_RATE - BASE_DECELERATION_RATE));
-    };
+    // Car physics calculation functions moved to carPhysics.js
+    // - calculateCurvature
+    // - getSpeedMultiplier
+    // - getDecelerationRate
 
     // --- Drawing Functions ---
 
@@ -374,41 +313,7 @@ export function initializeGame() {
         redrawAllHelper();
     };
 
-    const getPointAlongPath = (progress, path) => {
-        if (!path || path.length < 2) {
-            return path[0] || { x: 0, y: 0 };
-        }
-
-        let pathTotalLength = calculatePathLength(path);
-        if (pathTotalLength === 0) {
-            return path[0];
-        }
-
-        let targetDistance = progress * pathTotalLength;
-        let accumulatedLength = 0;
-
-        for (let i = 0; i < path.length - 1; i++) {
-            const segmentLength = dist(path[i], path[i + 1]);
-            if (accumulatedLength + segmentLength >= targetDistance || i === path.length - 2) {
-                // If segmentLength is 0, t calculation fails, return start point of segment
-                if (segmentLength === 0) {
-                    return path[i];
-                }
-                // Ensure progress doesn't exceed 1 due to float precision
-                const clampedTarget = Math.min(targetDistance, pathTotalLength);
-                const t = (clampedTarget - accumulatedLength) / segmentLength;
-                // Clamp t between 0 and 1
-                const clampedT = Math.max(0, Math.min(1, t));
-                return {
-                    x: path[i].x + clampedT * (path[i + 1].x - path[i].x),
-                    y: path[i].y + clampedT * (path[i + 1].y - path[i].y)
-                };
-            }
-            accumulatedLength += segmentLength;
-        }
-        // Fallback: return the last point if progress is 1 or more
-        return path[path.length - 1];
-    };
+    // getPointAlongPath function moved to carPhysics.js
 
     const showVictoryScreen = (score) => {
         const victoryScreen = document.getElementById('victoryScreen');
@@ -1422,80 +1327,57 @@ export function initializeGame() {
             return;
         }
 
-        // Initialize previous position on the first frame
-        if (gameStates.previousCarPosition === null) {
-            gameStates.previousCarPosition = { ...gameStates.carPosition };
-            gameStates.previousCarAngle = gameStates.currentCarAngle; // Initialize previous angle too
-        }
+        // Create a car state object for the physics update
+        const carState = {
+            isFinishing: gameStates.isFinishing,
+            previousPosition: gameStates.previousCarPosition,
+            position: gameStates.carPosition,
+            progress: gameStates.carProgress,
+            currentAngle: gameStates.currentCarAngle,
+            previousAngle: gameStates.previousCarAngle,
+            currentWheelAngle: gameStates.currentWheelAngle,
+            currentSpeed: gameStates.currentSpeed,
+            isSkidding: gameStates.isSkidding,
+            pathTotalLength: gameStates.player1TotalLength,
+            trail: gameStates.carTrail,
+            fuelConsumed: gameStates.fuelConsumed,
+            tireMarks: gameStates.tireMarks
+        };
 
-        // --- Car Movement Calculation ---
-        // Calculate curvature, speed etc. based on the path the car is ACTUALLY following (player2Path)
-        const currentCurvature = calculateCurvature(gameStates.carProgress, gameStates.player2Path);
-        const upcomingProgress = Math.min(1, gameStates.carProgress + CURVE_LOOK_AHEAD);
-        const upcomingCurvature = calculateCurvature(upcomingProgress, gameStates.player2Path);
-        const targetSpeedMultiplier = getSpeedMultiplier(currentCurvature);
-        let targetSpeed = CAR_PIXEL_SPEED * targetSpeedMultiplier;
+        // Create a constants object for the physics update
+        const constants = {
+            PIXEL_SPEED: CAR_PIXEL_SPEED,
+            ANIMATION_INTERVAL: CAR_ANIMATION_INTERVAL,
+            MAX_CURVATURE: MAX_CURVATURE,
+            ACCELERATION_RATE: ACCELERATION_RATE,
+            BASE_DECELERATION_RATE: BASE_DECELERATION_RATE,
+            CURVE_LOOK_AHEAD: CURVE_LOOK_AHEAD,
+            MAX_DECELERATION_RATE: MAX_DECELERATION_RATE,
+            CURVE_PREPARATION_DISTANCE: CURVE_PREPARATION_DISTANCE,
+            FINISH_PREPARATION_DISTANCE: FINISH_PREPARATION_DISTANCE,
+            MIN_FINISH_SPEED: MIN_FINISH_SPEED,
+            WHEEL_TURN_SPEED: WHEEL_TURN_SPEED,
+            MAX_WHEEL_ANGLE: MAX_WHEEL_ANGLE,
+            WHEELBASE: WHEELBASE,
+            SKID_TURN_RATE_MULTIPLIER: SKID_TURN_RATE_MULTIPLIER
+        };
 
-        // --- (Speed adjustment near finish - might need rethinking if P1/P2 lengths differ significantly) ---
-        const distanceToFinish = 1 - gameStates.carProgress;
-        if (distanceToFinish < FINISH_PREPARATION_DISTANCE) {
-            const finishFactor = distanceToFinish / FINISH_PREPARATION_DISTANCE;
-            const minSpeed = CAR_PIXEL_SPEED * MIN_FINISH_SPEED;
-            targetSpeed = minSpeed + (targetSpeed - minSpeed) * finishFactor;
-        }
+        // Use the updateCarPhysics function from the carPhysics module
+        const result = updateCarPhysics(carState, gameStates.player2Path, constants, checkFuelLimit);
 
-        const decelerationRate = getDecelerationRate(currentCurvature, upcomingCurvature);
+        // Update the game state with the new car state
+        gameStates.previousCarPosition = carState.previousPosition;
+        gameStates.carPosition = carState.position;
+        gameStates.carProgress = carState.progress;
+        gameStates.currentCarAngle = carState.currentAngle;
+        gameStates.previousCarAngle = carState.previousAngle;
+        gameStates.currentWheelAngle = carState.currentWheelAngle;
+        gameStates.currentSpeed = carState.currentSpeed;
+        // Note: carState.trail and carState.tireMarks are updated by reference
 
-        if (targetSpeed > gameStates.currentSpeed) {
-            const speedDiff = targetSpeed - gameStates.currentSpeed;
-            const accelerationRate = ACCELERATION_RATE * (1 + speedDiff / CAR_PIXEL_SPEED);
-            gameStates.currentSpeed = Math.min(targetSpeed, gameStates.currentSpeed + CAR_PIXEL_SPEED * accelerationRate);
-        } else {
-            gameStates.currentSpeed = Math.max(targetSpeed, gameStates.currentSpeed - CAR_PIXEL_SPEED * decelerationRate);
-        }
-
-        // Calculate next progress BEFORE updating angles
-        const progressIncrement = (gameStates.currentSpeed / gameStates.player1TotalLength);
-        const nextProgress = gameStates.carProgress + progressIncrement;
-
-        // --- Calculate Target Steering and Update Wheel Angle ---
-        const lookAheadDistance = 0.05; // How far ahead on the path to look for steering target (adjust as needed)
-        const targetPoint = getPointAlongPath(Math.min(1, gameStates.carProgress + lookAheadDistance), gameStates.player2Path);
-        const angleToTarget = Math.atan2(targetPoint.y - gameStates.carPosition.y, targetPoint.x - gameStates.carPosition.x);
-
-        let steeringAngle = angleToTarget - gameStates.currentCarAngle;
-        // Normalize the steering angle difference to [-PI, PI]
-        steeringAngle = ((steeringAngle + Math.PI) % (2 * Math.PI)) - Math.PI;
-
-        // Gradually adjust wheel angle towards the required steering angle
-        const wheelAngleDiff = steeringAngle - gameStates.currentWheelAngle;
-        gameStates.currentWheelAngle += Math.sign(wheelAngleDiff) * Math.min(Math.abs(wheelAngleDiff), WHEEL_TURN_SPEED);
-        // Clamp wheel angle
-        gameStates.currentWheelAngle = Math.max(-MAX_WHEEL_ANGLE, Math.min(MAX_WHEEL_ANGLE, gameStates.currentWheelAngle));
-
-        // --- Update Car Angle (Heading) based on Physics ---
-        let deltaAngle = 0;
-        if (gameStates.isSkidding) {
-            // Apply rapid rotation based on steering input during skid
-            deltaAngle = steeringAngle * SKID_TURN_RATE_MULTIPLIER;
-        }
-        else if (Math.abs(gameStates.currentWheelAngle) > 0.01 && WHEELBASE > 0) {
-            const dt = CAR_ANIMATION_INTERVAL / 1000;
-            const speedPixelsPerSecond = gameStates.currentSpeed * (1000 / CAR_ANIMATION_INTERVAL);
-            deltaAngle = (speedPixelsPerSecond * Math.tan(gameStates.currentWheelAngle) / WHEELBASE) * dt;
-        }
-        gameStates.currentCarAngle += deltaAngle;
-        gameStates.currentCarAngle = ((gameStates.currentCarAngle + Math.PI) % (2 * Math.PI)) - Math.PI; // Normalize
-
-
-        // --- Fuel Check ---
-        // Get the next position based on path progress
-        const nextPos = getPointAlongPath(nextProgress, gameStates.player2Path); // Use nextProgress calculated earlier
-        const distanceMoved = dist(gameStates.carPosition, nextPos); // Use distance based on path progression
-
-        // Check if this next move would exceed fuel limit
-        if (checkFuelLimit(gameStates.carPosition, distanceMoved, false)) {
-            // Stop the car immediately
+        // Handle result from updateCarPhysics
+        if (result === false) {
+            // Car should stop (fuel limit exceeded)
             if (gameStates.carAnimationFrame) {
                 cancelAnimationFrame(gameStates.carAnimationFrame);
                 gameStates.carAnimationFrame = null;
@@ -1503,7 +1385,7 @@ export function initializeGame() {
 
             // Stop engine sound
             if (gameStates.engineSound) {
-                gameStates.engineSound.stop(); // Call the stop method provided by createV8EngineSound
+                gameStates.engineSound.stop();
                 gameStates.engineSound = null;
             }
 
@@ -1513,23 +1395,13 @@ export function initializeGame() {
                 drawFailState();
             }, 1000);
 
-            return; // Exit the animation function
+            return;
         }
 
-        // --- Update Car State ---
-        gameStates.previousCarPosition = { ...gameStates.carPosition };
-        gameStates.carPosition = nextPos; // Position follows the path precisely
-        gameStates.carProgress = nextProgress;
-        gameStates.carTrail.push({ ...gameStates.carPosition });
-        gameStates.fuelConsumed += distanceMoved; // Fuel consumption based on distance moved along path
-
-        // --- Update Sounds and Tire Marks (Adjust screeching condition) ---
-
-        // Determine if the car should be screeching based on angle change rate and speed
-        // Higher threshold for deltaAngle, maybe combine with speed?
-        const turnRateThreshold = 0.03; // Radians change per frame threshold (adjust)
+        // Determine if the car should be screeching based on angle change
+        const deltaAngle = gameStates.currentCarAngle - gameStates.previousCarAngle;
+        const turnRateThreshold = 0.03; // Radians change per frame threshold
         const speedThreshold = CAR_PIXEL_SPEED * 0.5; // Minimum speed to screech
-        // Force screeching if skidding, otherwise use normal logic
         const shouldBeScreeching = gameStates.isSkidding || (Math.abs(deltaAngle) > turnRateThreshold && gameStates.currentSpeed > speedThreshold);
 
         // Check if screeching just started
@@ -1540,60 +1412,18 @@ export function initializeGame() {
         // Update the screeching state for the current frame
         gameStates.isScreeching = shouldBeScreeching;
 
-        // Add tire marks if currently screeching
-        if (gameStates.isScreeching) {
-            // --- Add Tire Marks --- (Keep this logic, uses currentCarAngle which is now updated differently)
-            const carWidth = CAR_CONSTANTS?.WIDTH || 15;
-            const carLength = CAR_CONSTANTS?.HEIGHT || 25;
-            const halfW = carWidth / 2;
-            const halfL = carLength / 2;
-
-            const tireOffsets = [
-                { x: halfW, y: -halfL }, { x: -halfW, y: -halfL },
-                { x: halfW, y: halfL }, { x: -halfW, y: halfL }
-            ];
-
-            const calculateTirePositions = (centerPos, angle) => {
-                const cosA = Math.cos(angle);
-                const sinA = Math.sin(angle);
-                return tireOffsets.map(offset => {
-                    const rotatedX = offset.x * cosA - offset.y * sinA;
-                    const rotatedY = offset.x * sinA + offset.y * cosA;
-                    return { x: centerPos.x + rotatedX, y: centerPos.y + rotatedY };
-                });
-            };
-
-            const currentTirePositions = calculateTirePositions(gameStates.carPosition, gameStates.currentCarAngle);
-            if (gameStates.previousCarPosition && gameStates.previousCarAngle !== undefined) {
-                const previousTirePositions = calculateTirePositions(gameStates.previousCarPosition, gameStates.previousCarAngle);
-
-                for (let i = 0; i < 4; i++) {
-                    if (distSq(previousTirePositions[i], currentTirePositions[i]) > 0.1) {
-                        gameStates.tireMarks.push({
-                            start: previousTirePositions[i],
-                            end: currentTirePositions[i]
-                        });
-                    }
-                }
-            }
-        }
-
-        // Store current angle as previous for the next frame
-        gameStates.previousCarAngle = gameStates.currentCarAngle; // Keep tracking for tire marks
-
-        // --- Engine Sound --- (Keep as is)
+        // --- Engine Sound ---
         if (!gameStates.engineSound) {
             gameStates.engineSound = playSound('engine');
         } else {
             gameStates.engineSound.updateSpeed(gameStates.currentSpeed, CAR_PIXEL_SPEED);
         }
 
-        // --- Redraw and Continue --- (Keep as is)
-        redrawAll();
+        // --- Redraw and Continue ---
+        redrawAllHelper();
 
-        // --- Finish Line Check --- (Keep as is)
-        // Check only if not already in the finishing delay phase
-        if (!gameStates.isFinishing && gameStates.carProgress >= 1) {
+        // --- Finish Line Check ---
+        if (result === 'finished' && !gameStates.isFinishing) {
             gameStates.isFinishing = true; // Set the finishing flag
             gameStates.currentSpeed = 0; // Stop the car immediately
 
@@ -1617,7 +1447,7 @@ export function initializeGame() {
 
             // Stop engine sound
             if (gameStates.engineSound) {
-                gameStates.engineSound.stop(); // Call the stop method provided by createV8EngineSound
+                gameStates.engineSound.stop();
                 gameStates.engineSound = null;
             }
 
@@ -1628,7 +1458,7 @@ export function initializeGame() {
             }
 
             // Perform one final redraw to show the car at the finish line
-            redrawAll();
+            redrawAllHelper();
             drawPath(ctx, gameStates.player2Path, P2_COLOR, P2_WIDTH, false, P1_COLOR);
 
             // Set timeout to show the appropriate screen after 1 second
@@ -1677,7 +1507,7 @@ export function initializeGame() {
 
     const animateParticles = () => {
         // Clear the canvas and redraw everything
-        redrawAll();
+        redrawAllHelper();
 
         // Update and draw particles on top
         updateAndDrawParticles(ctx, gameStates.activeParticles);
@@ -1701,7 +1531,7 @@ export function initializeGame() {
         P1_WIDTH = parseInt(e.target.value);
         widthValue.textContent = P1_WIDTH;
         if (gameStates.gameState === GAME_STATES.P1_DRAWING && gameStates.player1Path.length > 0) {
-            redrawAll();
+            redrawAllHelper();
         }
     });
 
