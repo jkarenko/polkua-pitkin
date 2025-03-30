@@ -109,7 +109,7 @@ export function initializeGame() {
     let particleAnimationFrame = null;
 
     // --- Helper Functions ---
-    function getEventCoords(e) {
+    const getEventCoords = (e) => {
         const rect = canvas.getBoundingClientRect();
         let x, y;
         const touch = e.touches && e.touches[0];
@@ -118,68 +118,31 @@ export function initializeGame() {
         x *= canvas.width / rect.width;
         y *= canvas.height / rect.height;
         return { x, y };
-    }
+    };
 
-    function distSq(p1, p2) {
+    const distSq = (p1, p2) => {
         return (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2;
-    }
+    };
 
-    function dist(p1, p2) {
+    const dist = (p1, p2) => {
         return Math.sqrt(distSq(p1, p2));
-    }
+    };
 
-    function pointLineSegmentDistance(p, a, b) {
+    const pointLineSegmentDistance = (p, a, b) => {
         const l2 = distSq(a, b);
-        if (l2 === 0) return dist(p, a);
+        if (l2 === 0) {
+            return dist(p, a);
+        }
         let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
         t = Math.max(0, Math.min(1, t));
         const projection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
         return dist(p, projection);
-    }
+    };
 
-    // New helper function to find the closest point on a path
-    function findClosestPointOnPath(point, path) {
-        if (!path || path.length < 1) return null;
-        if (path.length === 1) return { ...path[0] };
-
-        let minDistanceSq = Infinity;
-        let closestPoint = null;
-
-        for (let i = 0; i < path.length - 1; i++) {
-            const a = path[i];
-            const b = path[i + 1];
-            const l2 = distSq(a, b);
-            let projection;
-            let dSq;
-
-            if (l2 === 0) { // Segment is a point
-                projection = a;
-                dSq = distSq(point, a);
-            } else {
-                let t = ((point.x - a.x) * (b.x - a.x) + (point.y - a.y) * (b.y - a.y)) / l2;
-                t = Math.max(0, Math.min(1, t));
-                projection = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
-                dSq = distSq(point, projection);
-            }
-
-            if (dSq < minDistanceSq) {
-                minDistanceSq = dSq;
-                closestPoint = projection;
-            }
-        }
-        // Check distance to the very last point
-        const distToLastSq = distSq(point, path[path.length - 1]);
-        if (distToLastSq < minDistanceSq) {
-            // minDistanceSq = distToLastSq; // Not needed, just update point
-            closestPoint = { ...path[path.length - 1] };
-        }
-
-
-        return closestPoint; // Returns the {x, y} of the closest point on the path centerline
-    }
-
-    function isPointWithinPath(point, path, threshold) {
-        if (path.length < 2) return true; // Path is just a point or empty
+    const isPointWithinPath = (point, path, threshold) => {
+        if (path.length < 2) {
+            return true;
+        } // Path is just a point or empty
 
         // For Player 1's drawing phase, use the original behavior
         if (gameState === 'P1_DRAWING') {
@@ -215,18 +178,20 @@ export function initializeGame() {
         }
 
         return minDistance <= threshold;
-    }
+    };
 
-    function calculatePathLength(path) {
+    const calculatePathLength = (path) => {
         let length = 0;
         for (let i = 0; i < path.length - 1; i++) {
             length += dist(path[i], path[i + 1]);
         }
         return length;
-    }
+    };
 
-    function getProgressAlongPath(point, path) {
-        if (path.length < 2 || player1TotalLength === 0) return 0;
+    const getProgressAlongPath = (point, path) => {
+        if (path.length < 2 || player1TotalLength === 0) {
+            return 0;
+        }
 
         // For Player 1's drawing phase, use the original behavior
         if (gameState === 'P1_DRAWING') {
@@ -289,10 +254,12 @@ export function initializeGame() {
         }
 
         return (accumulatedLength + currentSegmentProgress) / player1TotalLength;
-    }
+    };
 
-    function calculateCurvature(progress, path) {
-        if (path.length < 3) return 0;
+    const calculateCurvature = (progress, path) => {
+        if (path.length < 3) {
+            return 0;
+        }
 
         // Get points before and after current position
         const lookAhead = CURVATURE_WINDOW;
@@ -319,15 +286,15 @@ export function initializeGame() {
         // Convert angle to curvature (0 to 1)
         // 0 = straight line, 1 = complete U-turn
         return Math.min(MAX_CURVATURE, angle / Math.PI);
-    }
+    };
 
-    function getSpeedMultiplier(curvature) {
+    const getSpeedMultiplier = (curvature) => {
         // Convert curvature (0 to MAX_CURVATURE) to speed multiplier (0.05 to 1.0)
         // Now at maximum curvature, speed will be reduced to 5% instead of 10%
         return 1.0 - (curvature / MAX_CURVATURE) * 0.95;
-    }
+    };
 
-    function getDecelerationRate(currentCurvature, upcomingCurvature) {
+    const getDecelerationRate = (currentCurvature, upcomingCurvature) => {
         // If there's a sharp curve coming up, decelerate more aggressively
         const curveFactor = Math.max(0, upcomingCurvature - currentCurvature);
 
@@ -341,11 +308,13 @@ export function initializeGame() {
         const combinedFactor = (curveFactor + extraSharpCurveFactor) * preparationFactor;
 
         return BASE_DECELERATION_RATE + (combinedFactor * (MAX_DECELERATION_RATE - BASE_DECELERATION_RATE));
-    }
+    };
 
     // --- Drawing Functions ---
-    function drawPath(path, color, width, isDrawing = false) {
-        if (path.length < 1) return;
+    const drawPath = (path, color, width, isDrawing = false) => {
+        if (path.length < 1) {
+            return;
+        }
 
         if (!isDrawing) {
             // Draw the outline (black path with slightly larger width) only for completed paths
@@ -390,16 +359,16 @@ export function initializeGame() {
             ctx.stroke();
             ctx.setLineDash([]); // Reset dash pattern
         }
-    }
+    };
 
-    function drawCircle(center, radius, color) {
+    const drawCircle = (center, radius, color) => {
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
         ctx.fill();
-    }
+    };
 
-    function drawDirectionalMarker(point, direction, color = 'rgba(0, 0, 0, 0.3)') {
+    const drawDirectionalMarker = (point, direction, color = 'rgba(0, 0, 0, 0.3)') => {
         const arrowLength = P1_WIDTH * 0; // Length of the arrow
         const arrowWidth = P1_WIDTH * 0.2; // Reduced width of the arrow head for a thinner line
 
@@ -418,10 +387,12 @@ export function initializeGame() {
         ctx.stroke();
 
         ctx.restore();
-    }
+    };
 
-    function smoothPath(path) {
-        if (path.length < 3) return path;
+    const smoothPath = (path) => {
+        if (path.length < 3) {
+            return path;
+        }
 
         const smoothed = [];
         const halfWindow = Math.floor(SMOOTHING_WINDOW / 2);
@@ -450,9 +421,9 @@ export function initializeGame() {
         }
 
         return smoothed;
-    }
+    };
 
-    function handleP1Done() {
+    const handleP1Done = () => {
         if (player1Path.length < 2) {
             statusDiv.textContent = "Pelaaja 1: Polku on liian lyhyt! Piirrä pitempi polku.";
             return;
@@ -518,15 +489,19 @@ export function initializeGame() {
         //decorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
 
         redrawAll();
-    }
+    };
 
-    function getPointAlongPath(progress, path) {
+    const getPointAlongPath = (progress, path) => {
         // Always calculate based on the specific 'path' provided
-        if (!path || path.length < 2) return path[0] || { x: 0, y: 0 }; // Handle empty or single-point path
+        if (!path || path.length < 2) {
+            return path[0] || { x: 0, y: 0 };
+        } // Handle empty or single-point path
 
         // Calculate total length of the *provided* path for accurate progress mapping
         let pathTotalLength = calculatePathLength(path);
-        if (pathTotalLength === 0) return path[0]; // Avoid division by zero
+        if (pathTotalLength === 0) {
+            return path[0];
+        } // Avoid division by zero
 
         let targetDistance = progress * pathTotalLength;
         let accumulatedLength = 0;
@@ -535,7 +510,9 @@ export function initializeGame() {
             const segmentLength = dist(path[i], path[i + 1]);
             if (accumulatedLength + segmentLength >= targetDistance || i === path.length - 2) {
                 // If segmentLength is 0, t calculation fails, return start point of segment
-                if (segmentLength === 0) return path[i];
+                if (segmentLength === 0) {
+                    return path[i];
+                }
                 // Ensure progress doesn't exceed 1 due to float precision
                 const clampedTarget = Math.min(targetDistance, pathTotalLength);
                 const t = (clampedTarget - accumulatedLength) / segmentLength;
@@ -552,54 +529,7 @@ export function initializeGame() {
         return path[path.length - 1];
     }
 
-    function getDirectionAlongPath(progress, path) {
-        // Always calculate based on the specific 'path' provided
-        if (!path || path.length < 2) return { x: 1, y: 0 }; // Default direction if path is too short
-
-        // Calculate total length of the *provided* path
-        let pathTotalLength = calculatePathLength(path);
-        if (pathTotalLength === 0) return { x: 1, y: 0 }; // Default direction
-
-        let targetDistance = progress * pathTotalLength;
-        let accumulatedLength = 0;
-
-        for (let i = 0; i < path.length - 1; i++) {
-            const segmentLength = dist(path[i], path[i + 1]);
-            // Find the segment where the progress point lies
-            if (accumulatedLength + segmentLength >= targetDistance || i === path.length - 2) {
-                const direction = {
-                    x: path[i + 1].x - path[i].x,
-                    y: path[i + 1].y - path[i].y
-                };
-                // Normalize direction
-                const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
-                // If segment length is zero, try the next segment or return default
-                if (length === 0) {
-                    if (i < path.length - 2) continue; // Try next segment if possible
-                    else return { x: 1, y: 0 }; // Default at the very end
-                }
-                return {
-                    x: direction.x / length,
-                    y: direction.y / length
-                };
-            }
-            accumulatedLength += segmentLength;
-        }
-        // Fallback: return direction of the last segment or default
-        if (path.length >= 2) {
-            const lastSegmentDirection = {
-                x: path[path.length - 1].x - path[path.length - 2].x,
-                y: path[path.length - 1].y - path[path.length - 2].y
-            };
-            const length = Math.sqrt(lastSegmentDirection.x * lastSegmentDirection.x + lastSegmentDirection.y * lastSegmentDirection.y);
-            if (length > 0) {
-                return { x: lastSegmentDirection.x / length, y: lastSegmentDirection.y / length };
-            }
-        }
-        return { x: 1, y: 0 }; // Absolute fallback
-    }
-
-    function showVictoryScreen(score) {
+    const showVictoryScreen = (score) => {
         const victoryScreen = document.getElementById('victoryScreen');
         const scoreDisplay = document.getElementById('scoreDisplay');
         const scoreMessage = document.getElementById('scoreMessage');
@@ -640,10 +570,10 @@ export function initializeGame() {
 
         // Show the screen
         victoryScreen.style.display = 'flex';
-    }
+    };
 
     // Add new function to handle highscore updates
-    function updateHighScore(courseId, newScore) {
+    const updateHighScore = (courseId, newScore) => {
         try {
             let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
             const courseIndex = savedCourses.findIndex(course => course.id === courseId);
@@ -663,16 +593,18 @@ export function initializeGame() {
         } catch (error) {
             console.error("Error updating highscore:", error);
         }
-    }
+    };
 
-    function drawFailState() {
+    const drawFailState = () => {
         const defeatScreen = document.getElementById('defeatScreen');
         defeatScreen.style.display = 'flex';
-    }
+    };
 
-    function drawFuelGauge() {
+    const drawFuelGauge = () => {
         // Only draw if P2 is drawing or car is animating
-        if (gameState !== 'P2_DRAWING' && gameState !== 'CAR_ANIMATING') return;
+        if (gameState !== 'P2_DRAWING' && gameState !== 'CAR_ANIMATING') {
+            return;
+        }
 
         const gaugeWidth = 200;
         const gaugeHeight = 30;
@@ -741,9 +673,9 @@ export function initializeGame() {
         ctx.fillText(`Polttoaine: ${Math.round(remainingFuel * 100)}%`, x + gaugeWidth / 2, y + gaugeHeight / 2);
 
         ctx.restore(); // Restores shadow settings etc.
-    }
+    };
 
-    function redrawAll() {
+    const redrawAll = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // 1. Draw base P1 path elements (always behind everything else)
@@ -819,10 +751,10 @@ export function initializeGame() {
 
         // 6. Draw UI elements last (on top of everything)
         drawFuelGauge();
-    }
+    };
 
     // --- Game Logic ---
-    function resetPlayer2() {
+    const resetPlayer2 = () => {
         player2Path = [];
         isDrawing = false;
         lastPlayedProgressMilestone = 0;
@@ -832,9 +764,9 @@ export function initializeGame() {
         statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
         redrawAll();
         saveCourseButton.style.display = 'none'; // Hide P1 save button
-    }
+    };
 
-    function resetGame() {
+    const resetGame = () => {
         // Hide screens
         document.getElementById('victoryScreen').style.display = 'none';
         document.getElementById('defeatScreen').style.display = 'none';
@@ -902,11 +834,13 @@ export function initializeGame() {
         }
 
         window.currentLoadedCourseId = null; // Clear the loaded course ID
-    }
+    };
 
     // --- Event Handlers ---
-    function handleStart(e) {
-        if (e.touches && e.touches.length > 1) return;
+    const handleStart = (e) => {
+        if (e.touches && e.touches.length > 1) {
+            return;
+        }
         e.preventDefault();
         setHasInteracted(true);
 
@@ -932,8 +866,10 @@ export function initializeGame() {
         }
     }
 
-    function checkFuelLimit(currentPosition, distanceMoved, isDrawingPhase = false) {
-        if (defeatFlagged) return true; // Already defeated
+    const checkFuelLimit = (currentPosition, distanceMoved, isDrawingPhase = false) => {
+        if (defeatFlagged) {
+            return true; // Already defeated
+        }
 
         const effectivePathLength = isDrawingPhase ?
             getProgressAlongPath(currentPosition, player1Path) * player1TotalLength :
@@ -956,16 +892,20 @@ export function initializeGame() {
             return true; // Indicates defeat
         }
         return false; // Indicates no defeat
-    }
+    };
 
-    function handleMove(e) {
-        if (!isDrawing || (e.touches && e.touches.length > 1)) return;
+    const handleMove = (e) => {
+        if (!isDrawing || (e.touches && e.touches.length > 1)) {
+            return;
+        }
         e.preventDefault();
 
         const pos = getEventCoords(e);
         const lastPos = (gameState === 'P1_DRAWING' ? player1Path : player2Path).slice(-1)[0];
 
-        if (pos.x === lastPos.x && pos.y === lastPos.y) return;
+        if (pos.x === lastPos.x && pos.y === lastPos.y) {
+            return;
+        }
 
         if (gameState === 'P1_DRAWING') {
             player1Path.push(pos);
@@ -998,7 +938,9 @@ export function initializeGame() {
                     const segmentStart = player1Path[i];
                     const segmentEnd = player1Path[i + 1];
                     // Skip the current segment as it's already handled by the erasure
-                    if (segmentStart === lastPos && segmentEnd === pos) continue;
+                    if (segmentStart === lastPos && segmentEnd === pos) {
+                        continue;
+                    }
 
                     const distance = pointLineSegmentDistance(decoration.position, segmentStart, segmentEnd);
                     if (distance < minDistanceToPath) {
@@ -1056,10 +998,12 @@ export function initializeGame() {
                 playSound('chime', currentProgress);
             }
         }
-    }
+    };
 
-    function handleEnd(e) {
-        if (!isDrawing) return;
+    const handleEnd = (e) => {
+        if (!isDrawing) {
+            return;
+        }
         e.preventDefault();
 
         if (gameState === 'P1_DRAWING') {
@@ -1099,10 +1043,12 @@ export function initializeGame() {
                 statusDiv.textContent = 'Pelaaja 2: Piirtäminen keskeytyi! Aloita uudelleen alusta.';
             }
         }
-    }
+    };
 
-    function calculateScore() {
-        if (!player2Path || player2Path.length < 2 || !smoothedPath || smoothedPath.length < 2) return 0; // Added check for smoothedPath
+    const calculateScore = () => {
+        if (!player2Path || player2Path.length < 2 || !smoothedPath || smoothedPath.length < 2) {
+            return 0; // Added check for smoothedPath
+        }
 
         let totalDistance = 0;
         let validPoints = 0;
@@ -1130,7 +1076,9 @@ export function initializeGame() {
             }
         }
 
-        if (validPoints === 0) return 0;
+        if (validPoints === 0) {
+            return 0;
+        }
 
         // Calculate average distance
         const avgDistance = totalDistance / validPoints;
@@ -1138,22 +1086,30 @@ export function initializeGame() {
         // Convert to score (0-100)
         // Perfect score (100) when average distance is 0
         // 0 points when average distance is SCORE_THRESHOLD or greater
-        const score = Math.max(0, Math.round(SCORE_POINTS * (1 - avgDistance / SCORE_THRESHOLD)));
-
-        return score;
+        return Math.max(0, Math.round(SCORE_POINTS * (1 - avgDistance / SCORE_THRESHOLD)));
     }
 
-    function getScoreMessage(score) {
-        if (score >= 90) return "Vau! Upea suoritus! 🌟🌟🌟🌟🌟";
-        if (score >= 80) return "Ajoit varsin hienosti! 🌟🌟🌟🌟";
-        if (score >= 70) return "Hyvä! Pysyit tiellä! 🌟🌟🌟";
-        if (score >= 60) return "Pystyt parempaankin! 🌟🌟";
-        if (score >= 50) return "Nyt meni vähän mutkitellen! 🌟";
+    const getScoreMessage = (score) => {
+        if (score >= 90) {
+            return "Vau! Upea suoritus! 🌟🌟🌟🌟🌟";
+        }
+        if (score >= 80) {
+            return "Ajoit varsin hienosti! 🌟🌟🌟🌟";
+        }
+        if (score >= 70) {
+            return "Hyvä! Pysyit tiellä! 🌟🌟🌟";
+        }
+        if (score >= 60) {
+            return "Pystyt parempaankin! 🌟🌟";
+        }
+        if (score >= 50) {
+            return "Nyt meni vähän mutkitellen! 🌟";
+        }
         return "Kokeile uudelleen! 💪";
-    }
+    };
 
     // --- Initialization ---
-    function resizeCanvas() {
+    const resizeCanvas = () => {
         const controlsHeight = document.getElementById('controls').offsetHeight + 20; // Get actual height + margin
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight; // Adjust if controls overlay canvas significantly
@@ -1164,6 +1120,584 @@ export function initializeGame() {
 
         redrawAll(); // Redraw contents after resize
     }
+
+    const saveCourseNow = () => {
+        if (gameState !== 'P1_DRAWING' && gameState !== 'SHOWING_SCORE') {
+            console.warn("Attempted to save course outside of valid phases.");
+            return;
+        }
+
+        const saveButton = gameState === 'P1_DRAWING' ?
+            document.getElementById('saveCourseButton') :
+            document.getElementById('victorySaveButton');
+
+        // Handle P1 drawing phase saving as before
+        if (gameState === 'P1_DRAWING') {
+            if (!player1Path || player1Path.length < 2) {
+                alert("Rataa ei voi tallentaa, koska polku on liian lyhyt!");
+                return;
+            }
+
+            // Use the current P1 path for hashing and saving
+            const coursePathToSave = [...player1Path]; // Create a copy
+            const courseId = hashPath(coursePathToSave);
+            const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+
+            const newCourseData = {
+                id: courseId,
+                name: courseName,
+                player1Path: coursePathToSave,
+                highScore: 0, // No high score yet
+                highScorePlayer2Path: [] // No P2 path yet
+            };
+
+            try {
+                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
+
+                if (existingCourseIndex !== -1) {
+                    // Course with this exact path already exists
+                    alert("Tämä rata on jo tallennettu.");
+                    saveButton.textContent = 'Jo tallennettu';
+                    setTimeout(() => { saveButton.textContent = 'Tallenna rata'; }, 1500);
+                } else {
+                    // --- Add new course ---
+                    savedCourses.push(newCourseData);
+                    localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                    console.log(`P1 course saved: ${newCourseData.name}`, newCourseData);
+
+                    // Provide feedback on the button
+                    saveButton.textContent = 'Tallennettu!';
+                    saveButton.disabled = true;
+                    setTimeout(() => {
+                        saveButton.textContent = 'Tallenna rata';
+                        saveButton.disabled = false;
+                    }, 1500);
+
+                    // If the sidebar is open, refresh it
+                    if (savedCoursesSidebar.classList.contains('visible')) {
+                        populateSavedCoursesSidebar();
+                    }
+                }
+            } catch (error) {
+                console.error("Error saving P1 course to localStorage:", error);
+                alert("Radan tallentamisessa tapahtui virhe.");
+            }
+        }
+        // Handle victory screen saving (only for new courses)
+        else if (gameState === 'SHOWING_SCORE') {
+            if (!smoothedPath || smoothedPath.length < 2) {
+                console.error("Cannot save: No valid Player 1 path exists.");
+                alert("Rataa ei voi tallentaa, koska Pelaaja 1:n polkua ei ole piirretty kunnolla.");
+                return;
+            }
+
+            try {
+                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+
+                // Only handle saving new courses - highscores are updated automatically
+                if (!window.currentLoadedCourseId) {
+                    const courseId = hashPath(smoothedPath);
+                    const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+                    const newCourseData = {
+                        id: courseId,
+                        name: courseName,
+                        player1Path: smoothedPath,
+                        highScore: currentSessionHighScore,
+                        highScorePlayer2Path: currentSessionBestPlayer2Path
+                    };
+
+                    const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
+                    if (existingCourseIndex === -1) {
+                        savedCourses.push(newCourseData);
+                        localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                        saveButton.textContent = 'Tallennettu!';
+                        saveButton.disabled = true;
+                    } else {
+                        saveButton.textContent = 'Rata jo tallennettu';
+                        saveButton.disabled = true;
+                    }
+
+                    // If sidebar is open, refresh it
+                    if (savedCoursesSidebar.classList.contains('visible')) {
+                        populateSavedCoursesSidebar();
+                    }
+                }
+            } catch (error) {
+                console.error("Error saving course:", error);
+                alert("Radan tallentamisessa tapahtui virhe.");
+                saveButton.textContent = 'Tallennus epäonnistui';
+                saveButton.disabled = false;
+            }
+        }
+    };
+
+    const replayLevel = () => {
+        // Hide screens
+        document.getElementById('victoryScreen').style.display = 'none';
+        document.getElementById('defeatScreen').style.display = 'none';
+
+        // Keep player1Path and smoothedPath, but reset everything else
+        player2Path = [];
+        isDrawing = false;
+        lastPlayedProgressMilestone = 0;
+        currentActiveSegmentIndex = 0;
+        currentPathLength = 0;
+        fuelConsumed = 0; // Reset fuel consumed for replay
+        previousCarPosition = null; // Reset previous car position tracking
+        defeatFlagged = false; // Reset defeat flag
+        isFinishing = false; // Reset finishing flag
+        carConfig = null; // Reset car configuration
+        gameState = 'P2_WAITING';
+        statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
+
+        // Reset car state
+        if (carAnimationFrame) {
+            cancelAnimationFrame(carAnimationFrame);
+            carAnimationFrame = null;
+        }
+        carProgress = 0;
+        carPosition = { x: 0, y: 0 };
+        carAngle = 0;
+        carTrail = []; // Clear car trail array
+        tireMarks = []; // <--- Clear tire marks
+        isScreeching = false; // <--- Reset screeching state
+        isSkidding = false; // Add this
+
+        // Stop engine sound if playing
+        if (engineSound) {
+            engineSound.stop(); // Call the stop method provided by createV8EngineSound
+            engineSound = null;
+        }
+
+        redrawAll();
+
+        // Clear particles
+        activeParticles = [];
+
+        // Cancel particle animation if running
+        if (particleAnimationFrame) {
+            cancelAnimationFrame(particleAnimationFrame);
+            particleAnimationFrame = null;
+        }
+    };
+
+    const openSidebar = () => {
+        populateSavedCoursesSidebar(); // Load content when opening
+        savedCoursesSidebar.classList.add('visible');
+        document.body.classList.add('body-sidebar-open'); // Updated class name
+    };
+
+    const closeSidebar = () => {
+        savedCoursesSidebar.classList.remove('visible');
+        document.body.classList.remove('body-sidebar-open'); // Updated class name
+    };
+
+    const showTrashCan = () => {
+        trashCan.style.display = 'block';
+    };
+
+    const hideTrashCan = () => {
+        trashCan.style.display = 'none';
+        trashCan.classList.remove('active-drop'); // Remove hover effect
+    };
+
+    const getStarRatingHTML = (score) => {
+        const maxStars = 5;
+        let stars = 0;
+        // sourcery skip: use-braces
+        if (score >= 90) stars = 5;
+        else if (score >= 80) stars = 4;
+        else if (score >= 70) stars = 3;
+        else if (score >= 60) stars = 2;
+        else if (score >= 50) stars = 1;
+
+        let html = '';
+        for (let i = 0; i < stars; i++) {
+            html += '⭐'; // Full star
+        }
+        for (let i = stars; i < maxStars; i++) {
+            // html += '☆'; // Outline star (optional)
+        }
+        return html;
+    };
+
+    const drawThumbnail = (canvasElement, path) => {
+        const thumbCtx = canvasElement.getContext('2d');
+        const { width, height } = canvasElement;
+
+        thumbCtx.clearRect(0, 0, width, height);
+
+        if (!path || path.length < 2) {
+            return;
+        }
+
+        // Find path bounds
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        path.forEach(p => {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+        });
+
+        const pathWidth = maxX - minX;
+        const pathHeight = maxY - minY;
+
+        // Handle cases where path is a point or a straight vertical/horizontal line
+        const effectivePathWidth = pathWidth === 0 ? 1 : pathWidth; // Give it minimal width/height if zero
+        const effectivePathHeight = pathHeight === 0 ? 1 : pathHeight;
+
+        // Calculate scale to fit within padded area
+        const availableWidth = width - 2 * THUMBNAIL_PADDING;
+        const availableHeight = height - 2 * THUMBNAIL_PADDING;
+        // Ensure available dimensions are positive
+        if (availableWidth <= 0 || availableHeight <= 0) {
+            return;
+        }
+
+        const scale = Math.min(availableWidth / effectivePathWidth, availableHeight / effectivePathHeight);
+
+        // Calculate translation to center the scaled path
+        const scaledWidth = effectivePathWidth * scale;
+        const scaledHeight = effectivePathHeight * scale;
+        const offsetX = THUMBNAIL_PADDING + (availableWidth - scaledWidth) / 2;
+        const offsetY = THUMBNAIL_PADDING + (availableHeight - scaledHeight) / 2;
+        // Adjust translation based on the original min points and the calculated scale/offset
+        const translateX = offsetX - minX * scale;
+        const translateY = offsetY - minY * scale;
+
+        // Draw the scaled path
+        thumbCtx.strokeStyle = P1_COLOR;
+        thumbCtx.lineWidth = 5; // Increased line width to match marker size visually
+        thumbCtx.lineCap = 'round';
+        thumbCtx.lineJoin = 'round';
+        thumbCtx.beginPath();
+        thumbCtx.moveTo(path[0].x * scale + translateX, path[0].y * scale + translateY);
+        for (let i = 1; i < path.length; i++) {
+            thumbCtx.lineTo(path[i].x * scale + translateX, path[i].y * scale + translateY);
+        }
+        thumbCtx.stroke();
+
+        // Draw start/end markers (size remains 5)
+        thumbCtx.fillStyle = START_COLOR;
+        thumbCtx.beginPath();
+        thumbCtx.arc(path[0].x * scale + translateX, path[0].y * scale + translateY, 5, 0, Math.PI * 2);
+        thumbCtx.fill();
+
+        // Ensure there's a distinct end point before drawing the end marker
+        if (path.length > 1) {
+            thumbCtx.fillStyle = END_COLOR;
+            thumbCtx.beginPath();
+            thumbCtx.arc(path[path.length - 1].x * scale + translateX, path[path.length - 1].y * scale + translateY, 5, 0, Math.PI * 2);
+            thumbCtx.fill();
+        }
+    };
+
+    // Update the populateSavedCoursesSidebar function to add the touch handler
+    const populateSavedCoursesSidebar = () => {
+        sidebarContent.innerHTML = '';
+        try {
+            const savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+            if (savedCourses.length === 0) {
+                sidebarContent.innerHTML = '<p style="text-align: center; color: #666;">Ei tallennettuja ratoja.</p>';
+                return;
+            }
+
+            savedCourses.forEach(course => {
+                if (!course || !course.id || !course.player1Path) {
+                    console.warn("Skipping invalid course data:", course);
+                    return;
+                }
+
+                const container = document.createElement('div');
+                container.className = 'thumbnail-container';
+                container.draggable = true;
+                container.dataset.courseId = course.id;
+
+                // Improved touch handling
+                let touchStartTime = 0;
+                let touchStartX = 0;
+                let touchStartY = 0;
+                let isTapping = false;
+                let isScrolling = false;
+
+                container.addEventListener('touchstart', (e) => {
+                    touchStartTime = Date.now();
+                    touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].pageY;
+                    isTapping = true;
+                    isScrolling = false;
+                }, { passive: true });
+
+                container.addEventListener('touchmove', (e) => {
+                    if (!isTapping) {
+                        return;
+                    }
+
+                    const touchCurrentX = e.touches[0].clientX;
+                    const touchCurrentY = e.touches[0].pageY;
+                    const deltaX = Math.abs(touchCurrentX - touchStartX);
+                    const deltaY = Math.abs(touchCurrentY - touchStartY);
+
+                    // If vertical movement is greater, it's probably a scroll
+                    if (deltaY > deltaX && deltaY > 10) {
+                        isScrolling = true;
+                        isTapping = false;
+                    }
+                    // If horizontal movement is greater, might be trying to drag
+                    else if (deltaX > deltaY && deltaX > 10) {
+                        isTapping = false;
+                        // Could initiate drag here if needed
+                    }
+                }, { passive: true });
+
+                container.addEventListener('touchend', (e) => {
+                    if (isScrolling || !isTapping) {
+                        return;
+                    }
+
+                    const touchEndTime = Date.now();
+                    const touchEndX = e.changedTouches[0].clientX;
+                    const touchEndY = e.changedTouches[0].pageY;
+
+                    const touchDuration = touchEndTime - touchStartTime;
+                    const touchDistance = Math.sqrt(
+                        Math.pow(touchEndX - touchStartX, 2) +
+                        Math.pow(touchEndY - touchStartY, 2)
+                    );
+
+                    // If it was a quick tap with minimal movement
+                    if (touchDuration < 200 && touchDistance < 10) {
+                        loadCourse(course);
+                    }
+
+                    isTapping = false;
+                }, { passive: true });
+
+                // Rest of the container setup...
+                const canvasEl = document.createElement('canvas');
+                canvasEl.className = 'thumbnail-canvas';
+                canvasEl.width = THUMBNAIL_WIDTH;
+                canvasEl.height = THUMBNAIL_HEIGHT;
+
+                const starsEl = document.createElement('div');
+                starsEl.className = 'thumbnail-stars';
+                starsEl.innerHTML = getStarRatingHTML(course.highScore || 0);
+
+                container.appendChild(canvasEl);
+                container.appendChild(starsEl);
+                sidebarContent.appendChild(container);
+
+                // Draw after appending
+                drawThumbnail(canvasEl, course.player1Path);
+
+                // Drag handlers
+                container.addEventListener('dragstart', (e) => {
+                    e.target.classList.add('dragging');
+                    handleThumbnailDragStart(e);
+                });
+
+                container.addEventListener('dragend', (e) => {
+                    e.target.classList.remove('dragging');
+                    handleThumbnailDragEnd(e);
+                });
+            });
+
+        } catch (error) {
+            console.error("Error loading saved courses for sidebar:", error);
+            sidebarContent.innerHTML = '<p style="color: red;">Radan lataus epäonnistui.</p>';
+        }
+    };
+
+    // --- Course Loading/Deleting ---
+
+    const loadCourse = (courseData) => {
+        if (!courseData || !courseData.player1Path) {
+            console.error("Invalid course data provided for loading.");
+            return;
+        }
+        console.log(`Loading course: ${courseData.name} (ID: ${courseData.id})`);
+
+        // Reset current game state partially (like resetGame but keep sidebar open?)
+        // Hide screens first
+        document.getElementById('victoryScreen').style.display = 'none';
+        document.getElementById('defeatScreen').style.display = 'none';
+
+        // Reset relevant state vars
+        player1Path = courseData.player1Path; // Use the loaded path
+        smoothedPath = [...player1Path]; // Set smoothedPath as well (assuming raw path is used)
+        player2Path = [];
+        isDrawing = false;
+        lastPlayedProgressMilestone = 0;
+        startMarker = null; // Will be recalculated
+        endMarker = null;   // Will be recalculated
+        progressMarkers = [];
+        currentActiveSegmentIndex = 0;
+        maxAllowedPathLength = 0;
+        currentPathLength = 0;
+        fuelConsumed = 0;
+        previousCarPosition = null;
+        defeatFlagged = false;
+        carConfig = null;
+
+        // Generate decorations for the loaded path
+        const decorationDensity = 5; // Same density as when P1 finishes drawing
+        const decorationOffset = P1_WIDTH * 1.5; // Same offset as when P1 finishes
+
+        // First generate all decorations
+        let allDecorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
+
+        // Then filter out decorations that are too close to the path
+        const minDistanceToPath = P1_WIDTH * 1.2; // Same threshold as used during P1 drawing
+        decorations = allDecorations.filter(decoration => {
+            // Check distance to all path segments
+            for (let i = 0; i < player1Path.length - 1; i++) {
+                const segmentStart = player1Path[i];
+                const segmentEnd = player1Path[i + 1];
+                const distance = pointLineSegmentDistance(decoration.position, segmentStart, segmentEnd);
+                if (distance < minDistanceToPath) {
+                    return false; // Remove decoration if too close to any segment
+                }
+            }
+            return true; // Keep decoration if it's far enough from all segments
+        });
+
+        tireMarks = [];
+
+        // IMPORTANT: Set the session high score from the loaded course
+        currentSessionHighScore = courseData.highScore || 0;
+        currentSessionBestPlayer2Path = courseData.highScorePlayer2Path || [];
+
+        // Update controls visibility
+        doneButton.style.display = 'none'; // P1 is done by loading
+        saveCourseButton.style.display = 'none'; // Hide P1 save button too
+        resetButton.style.display = 'inline-block';
+
+        // Stop any ongoing car animation/sound
+        if (carAnimationFrame) {
+            cancelAnimationFrame(carAnimationFrame);
+            carAnimationFrame = null;
+        }
+        if (engineSound) {
+            engineSound.stop();
+            engineSound = null;
+        }
+        carProgress = 0;
+        carPosition = { x: 0, y: 0 };
+        carAngle = 0;
+        carTrail = []; isScreeching = false;
+
+        // Now, trigger the logic similar to handleP1Done to set up P2 phase
+        // This recalculates markers, length, decorations based on the loaded player1Path
+        handleP1Done(); // This sets gameState to 'P2_WAITING' and redraws
+
+        closeSidebar(); // Close sidebar after loading
+        statusDiv.textContent = `Ladattu rata: ${courseData.name}. Pelaaja 2: Seuraa polkua.`;
+
+        // Add tracking of loaded course ID
+        window.currentLoadedCourseId = courseData.id;
+    };
+
+    const deleteCourse = (courseId) => {
+        if (!courseId) {
+            return;
+        }
+        console.log(`Attempting to delete course: ${courseId}`);
+        try {
+            let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+            const initialLength = savedCourses.length;
+            savedCourses = savedCourses.filter(course => course.id !== courseId);
+
+            if (savedCourses.length < initialLength) {
+                localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
+                console.log(`Course ${courseId} deleted.`);
+                // Refresh the sidebar to remove the thumbnail visually
+                populateSavedCoursesSidebar();
+                return true; // Indicate success
+            } else {
+                console.warn(`Course ${courseId} not found for deletion.`);
+                return false;
+            }
+        } catch (error) {
+            console.error("Error deleting course:", error);
+            alert("Radan poistaminen epäonnistui.");
+            return false;
+        }
+    };
+
+    // --- Drag and Drop Handlers ---
+
+    const handleThumbnailDragStart = (e) => {
+        // Check if it's a valid thumbnail container
+        if (e.target.classList.contains('thumbnail-container')) {
+            draggedCourseId = e.target.dataset.courseId;
+            e.dataTransfer.setData('text/plain', draggedCourseId);
+            e.dataTransfer.effectAllowed = 'move'; // Indicate moving is allowed
+            showTrashCan(); // Show trashcan when dragging starts
+            // Optional: Add a dragging style to the thumbnail
+            e.target.style.opacity = '0.5';
+        } else {
+            e.preventDefault(); // Prevent dragging if not the container
+        }
+    };
+
+    const handleThumbnailDragEnd = (e) => {
+        // Check if it's a valid thumbnail container ending drag
+        if (e.target.classList.contains('thumbnail-container')) {
+            // Restore appearance
+            e.target.style.opacity = '1';
+            hideTrashCan(); // Always hide trashcan when drag ends
+            draggedCourseId = null; // Clear the dragged ID
+        }
+    };
+
+    const handleCanvasDragOver = (e) => {
+        e.preventDefault(); // Necessary to allow dropping
+        e.dataTransfer.dropEffect = 'move'; // Indicate dropping is possible
+        // Optional: Add visual feedback to canvas (e.g., border)
+    };
+
+    const handleCanvasDrop = (e) => {
+        e.preventDefault();
+        const courseId = e.dataTransfer.getData('text/plain');
+        if (courseId) {
+            try {
+                const savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
+                const courseToLoad = savedCourses.find(c => c.id === courseId);
+                if (courseToLoad) {
+                    loadCourse(courseToLoad);
+                } else {
+                    console.error(`Course with ID ${courseId} not found in localStorage.`);
+                }
+            } catch (error) {
+                console.error("Error loading course on drop:", error);
+            }
+        }
+        hideTrashCan();
+    };
+
+    const handleTrashDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        trashCan.classList.add('active-drop');
+    };
+
+    const handleTrashDragLeave = (e) => {
+        trashCan.classList.remove('active-drop');
+    };
+
+    const handleTrashDrop = (e) => {
+        e.preventDefault();
+        const courseId = e.dataTransfer.getData('text/plain');
+        if (courseId) {
+            // Optional: Add a confirmation dialog
+            // if (confirm(`Haluatko varmasti poistaa tämän radan?`)) {
+            deleteCourse(courseId);
+            // }
+        }
+        hideTrashCan();
+    };
 
     // Setup Event Listeners
     canvas.addEventListener('mousedown', handleStart);
@@ -1223,69 +1757,16 @@ export function initializeGame() {
     // resizeCanvas(); // <-- Remove this line
     // resetGame(); // <-- Remove this line
 
-    function isPointInButton(point, buttonX, buttonY, buttonWidth, buttonHeight) {
+    const isPointInButton = (point, buttonX, buttonY, buttonWidth, buttonHeight) => {
         return point.x >= buttonX &&
             point.x <= buttonX + buttonWidth &&
             point.y >= buttonY &&
             point.y <= buttonY + buttonHeight;
-    }
+    };
 
-    function handleVictoryFailClick(e) {
-        // This function is no longer needed as we're using HTML buttons
-        // that have their own event listeners
-    }
+    
 
-    function replayLevel() {
-        // Hide screens
-        document.getElementById('victoryScreen').style.display = 'none';
-        document.getElementById('defeatScreen').style.display = 'none';
-
-        // Keep player1Path and smoothedPath, but reset everything else
-        player2Path = [];
-        isDrawing = false;
-        lastPlayedProgressMilestone = 0;
-        currentActiveSegmentIndex = 0;
-        currentPathLength = 0;
-        fuelConsumed = 0; // Reset fuel consumed for replay
-        previousCarPosition = null; // Reset previous car position tracking
-        defeatFlagged = false; // Reset defeat flag
-        isFinishing = false; // Reset finishing flag
-        carConfig = null; // Reset car configuration
-        gameState = 'P2_WAITING';
-        statusDiv.textContent = 'Pelaaja 2: Seuraa polkua harmaasta ympyrästä alkaen.';
-
-        // Reset car state
-        if (carAnimationFrame) {
-            cancelAnimationFrame(carAnimationFrame);
-            carAnimationFrame = null;
-        }
-        carProgress = 0;
-        carPosition = { x: 0, y: 0 };
-        carAngle = 0;
-        carTrail = []; // Clear car trail array
-        tireMarks = []; // <--- Clear tire marks
-        isScreeching = false; // <--- Reset screeching state
-        isSkidding = false; // Add this
-
-        // Stop engine sound if playing
-        if (engineSound) {
-            engineSound.stop(); // Call the stop method provided by createV8EngineSound
-            engineSound = null;
-        }
-
-        redrawAll();
-
-        // Clear particles
-        activeParticles = [];
-
-        // Cancel particle animation if running
-        if (particleAnimationFrame) {
-            cancelAnimationFrame(particleAnimationFrame);
-            particleAnimationFrame = null;
-        }
-    }
-
-    function animateCar() {
+    const animateCar = () => {
         // Exit if we are already in the finishing delay or showing score
         if (isFinishing || gameState === 'SHOWING_SCORE') {
             // Start particle animation if not already running
@@ -1352,13 +1833,11 @@ export function initializeGame() {
         if (isSkidding) {
             // Apply rapid rotation based on steering input during skid
             deltaAngle = steeringAngle * SKID_TURN_RATE_MULTIPLIER;
-        } else {
-            // Use normal kinematic model when not skidding
-            if (Math.abs(currentWheelAngle) > 0.01 && WHEELBASE > 0) {
-                const dt = CAR_ANIMATION_INTERVAL / 1000;
-                const speedPixelsPerSecond = currentSpeed * (1000 / CAR_ANIMATION_INTERVAL);
-                deltaAngle = (speedPixelsPerSecond * Math.tan(currentWheelAngle) / WHEELBASE) * dt;
-            }
+        }
+        else if (Math.abs(currentWheelAngle) > 0.01 && WHEELBASE > 0) {
+            const dt = CAR_ANIMATION_INTERVAL / 1000;
+            const speedPixelsPerSecond = currentSpeed * (1000 / CAR_ANIMATION_INTERVAL);
+            deltaAngle = (speedPixelsPerSecond * Math.tan(currentWheelAngle) / WHEELBASE) * dt;
         }
         currentCarAngle += deltaAngle;
         currentCarAngle = ((currentCarAngle + Math.PI) % (2 * Math.PI)) - Math.PI; // Normalize
@@ -1525,64 +2004,9 @@ export function initializeGame() {
         if (!isFinishing) {
             carAnimationFrame = requestAnimationFrame(animateCar);
         }
-    }
+    };
 
-    // --- Path Saving Logic ---
-
-    function saveCurrentCourse() {
-        // This function now ONLY handles the FIRST save of a course
-        const saveButton = document.getElementById('saveCourseButton');
-
-        if (!smoothedPath || smoothedPath.length < 2) {
-            console.error("Cannot save: No valid Player 1 path exists.");
-            alert("Rataa ei voi tallentaa, koska Pelaaja 1:n polkua ei ole piirretty kunnolla.");
-            return;
-        }
-        // Basic check for session score, though it might be 0 on first successful run
-        if (currentSessionHighScore <= 0 || !currentSessionBestPlayer2Path || currentSessionBestPlayer2Path.length < 2) {
-            console.warn("Saving course with potentially zero score or missing P2 path for the session.");
-        }
-
-        const courseId = hashPath(smoothedPath);
-        const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-
-        const newCourseData = {
-            id: courseId,
-            name: courseName,
-            player1Path: smoothedPath,
-            highScore: currentSessionHighScore, // Save the best score from the session
-            highScorePlayer2Path: currentSessionBestPlayer2Path
-        };
-
-        try {
-            let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-            const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
-
-            if (existingCourseIndex === -1) {
-                // --- Add new course ---
-                savedCourses.push(newCourseData);
-                localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
-                console.log(`Course saved for the first time: ${newCourseData.name}`, newCourseData);
-                saveButton.textContent = 'Tallennettu!'; // Feedback for new save
-                saveButton.disabled = true;
-            } else {
-                // Course somehow already exists - this shouldn't happen if showVictoryScreen logic is correct
-                // but handle defensively. Button should already be disabled in this case.
-                console.warn(`Save button clicked, but course ${courseId} already exists.`);
-                saveButton.textContent = 'Rata tallennettu'; // Reflect state
-                saveButton.disabled = true;
-            }
-
-        } catch (error) {
-            console.error("Error saving new course to localStorage:", error);
-            alert("Radan tallentamisessa tapahtui virhe.");
-            saveButton.textContent = 'Tallennus epäonnistui';
-            saveButton.disabled = false; // Allow retry?
-        }
-    }
-
-    // Add these hashing functions
-    function simpleHash(str) {
+    const simpleHash = (str) => {
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
             const char = str.charCodeAt(i);
@@ -1590,525 +2014,28 @@ export function initializeGame() {
         }
         // Convert to a positive hexadecimal string prefixed with 'h_'
         return `h_${(hash >>> 0).toString(16)}`;
-    }
+    };
 
-    function hashPath(path) {
-        if (!path || path.length === 0) return 'h_empty';
+    const hashPath = (path) => {
+        if (!path || path.length === 0) {
+            return 'h_empty';
+        }
         // Stringify with fixed precision to handle floating point variations
         const pathString = JSON.stringify(path.map(p => ({ x: p.x.toFixed(3), y: p.y.toFixed(3) })));
         return simpleHash(pathString);
-    }
+    };
 
-    // --- UI Functions ---
-
-    function openSidebar() {
-        populateSavedCoursesSidebar(); // Load content when opening
-        savedCoursesSidebar.classList.add('visible');
-        document.body.classList.add('body-sidebar-open'); // Updated class name
-    }
-
-    function closeSidebar() {
-        savedCoursesSidebar.classList.remove('visible');
-        document.body.classList.remove('body-sidebar-open'); // Updated class name
-    }
-
-    function showTrashCan() {
-        trashCan.style.display = 'block';
-    }
-
-    function hideTrashCan() {
-        trashCan.style.display = 'none';
-        trashCan.classList.remove('active-drop'); // Remove hover effect
-    }
-
-    function getStarRatingHTML(score) {
-        const maxStars = 5;
-        let stars = 0;
-        if (score >= 90) stars = 5;
-        else if (score >= 80) stars = 4;
-        else if (score >= 70) stars = 3;
-        else if (score >= 60) stars = 2;
-        else if (score >= 50) stars = 1;
-
-        let html = '';
-        for (let i = 0; i < stars; i++) {
-            html += '⭐'; // Full star
-        }
-        for (let i = stars; i < maxStars; i++) {
-            // html += '☆'; // Outline star (optional)
-        }
-        return html;
-    }
-
-    function drawThumbnail(canvasElement, path) {
-        const thumbCtx = canvasElement.getContext('2d');
-        const width = canvasElement.width;
-        const height = canvasElement.height;
-
-        thumbCtx.clearRect(0, 0, width, height);
-
-        if (!path || path.length < 2) return;
-
-        // Find path bounds
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        path.forEach(p => {
-            minX = Math.min(minX, p.x);
-            minY = Math.min(minY, p.y);
-            maxX = Math.max(maxX, p.x);
-            maxY = Math.max(maxY, p.y);
-        });
-
-        const pathWidth = maxX - minX;
-        const pathHeight = maxY - minY;
-
-        // Handle cases where path is a point or a straight vertical/horizontal line
-        const effectivePathWidth = pathWidth === 0 ? 1 : pathWidth; // Give it minimal width/height if zero
-        const effectivePathHeight = pathHeight === 0 ? 1 : pathHeight;
-
-        // Calculate scale to fit within padded area
-        const availableWidth = width - 2 * THUMBNAIL_PADDING;
-        const availableHeight = height - 2 * THUMBNAIL_PADDING;
-        // Ensure available dimensions are positive
-        if (availableWidth <= 0 || availableHeight <= 0) return;
-
-        const scale = Math.min(availableWidth / effectivePathWidth, availableHeight / effectivePathHeight);
-
-        // Calculate translation to center the scaled path
-        const scaledWidth = effectivePathWidth * scale;
-        const scaledHeight = effectivePathHeight * scale;
-        const offsetX = THUMBNAIL_PADDING + (availableWidth - scaledWidth) / 2;
-        const offsetY = THUMBNAIL_PADDING + (availableHeight - scaledHeight) / 2;
-        // Adjust translation based on the original min points and the calculated scale/offset
-        const translateX = offsetX - minX * scale;
-        const translateY = offsetY - minY * scale;
-
-        // Draw the scaled path
-        thumbCtx.strokeStyle = P1_COLOR;
-        thumbCtx.lineWidth = 5; // Increased line width to match marker size visually
-        thumbCtx.lineCap = 'round';
-        thumbCtx.lineJoin = 'round';
-        thumbCtx.beginPath();
-        thumbCtx.moveTo(path[0].x * scale + translateX, path[0].y * scale + translateY);
-        for (let i = 1; i < path.length; i++) {
-            thumbCtx.lineTo(path[i].x * scale + translateX, path[i].y * scale + translateY);
-        }
-        thumbCtx.stroke();
-
-        // Draw start/end markers (size remains 5)
-        thumbCtx.fillStyle = START_COLOR;
-        thumbCtx.beginPath();
-        thumbCtx.arc(path[0].x * scale + translateX, path[0].y * scale + translateY, 5, 0, Math.PI * 2);
-        thumbCtx.fill();
-
-        // Ensure there's a distinct end point before drawing the end marker
-        if (path.length > 1) {
-            thumbCtx.fillStyle = END_COLOR;
-            thumbCtx.beginPath();
-            thumbCtx.arc(path[path.length - 1].x * scale + translateX, path[path.length - 1].y * scale + translateY, 5, 0, Math.PI * 2);
-            thumbCtx.fill();
-        }
-    }
-
-    // Add this function to prevent bounce scrolling
-    function scrollToPreventBounce(element) {
-        const { scrollTop, offsetHeight, scrollHeight } = element;
-
-        // If at top, bump down 1px
-        if (scrollTop <= 0) {
-            element.scrollTo(0, 1);
-            return;
-        }
-
-        // If at bottom, bump up 1px
-        if (scrollTop + offsetHeight >= scrollHeight) {
-            element.scrollTo(0, scrollHeight - offsetHeight - 1);
-        }
-    }
-
-    // Update the populateSavedCoursesSidebar function to add the touch handler
-    function populateSavedCoursesSidebar() {
-        sidebarContent.innerHTML = '';
-        try {
-            const savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-            if (savedCourses.length === 0) {
-                sidebarContent.innerHTML = '<p style="text-align: center; color: #666;">Ei tallennettuja ratoja.</p>';
-                return;
-            }
-
-            savedCourses.forEach(course => {
-                if (!course || !course.id || !course.player1Path) {
-                    console.warn("Skipping invalid course data:", course);
-                    return;
-                }
-
-                const container = document.createElement('div');
-                container.className = 'thumbnail-container';
-                container.draggable = true;
-                container.dataset.courseId = course.id;
-
-                // Improved touch handling
-                let touchStartTime = 0;
-                let touchStartX = 0;
-                let touchStartY = 0;
-                let isTapping = false;
-                let isScrolling = false;
-
-                container.addEventListener('touchstart', (e) => {
-                    touchStartTime = Date.now();
-                    touchStartX = e.touches[0].clientX;
-                    touchStartY = e.touches[0].pageY;
-                    isTapping = true;
-                    isScrolling = false;
-                }, { passive: true });
-
-                container.addEventListener('touchmove', (e) => {
-                    if (!isTapping) return;
-
-                    const touchCurrentX = e.touches[0].clientX;
-                    const touchCurrentY = e.touches[0].pageY;
-                    const deltaX = Math.abs(touchCurrentX - touchStartX);
-                    const deltaY = Math.abs(touchCurrentY - touchStartY);
-
-                    // If vertical movement is greater, it's probably a scroll
-                    if (deltaY > deltaX && deltaY > 10) {
-                        isScrolling = true;
-                        isTapping = false;
-                    }
-                    // If horizontal movement is greater, might be trying to drag
-                    else if (deltaX > deltaY && deltaX > 10) {
-                        isTapping = false;
-                        // Could initiate drag here if needed
-                    }
-                }, { passive: true });
-
-                container.addEventListener('touchend', (e) => {
-                    if (isScrolling) return; // Don't handle taps if we were scrolling
-                    if (!isTapping) return;
-
-                    const touchEndTime = Date.now();
-                    const touchEndX = e.changedTouches[0].clientX;
-                    const touchEndY = e.changedTouches[0].pageY;
-
-                    const touchDuration = touchEndTime - touchStartTime;
-                    const touchDistance = Math.sqrt(
-                        Math.pow(touchEndX - touchStartX, 2) +
-                        Math.pow(touchEndY - touchStartY, 2)
-                    );
-
-                    // If it was a quick tap with minimal movement
-                    if (touchDuration < 200 && touchDistance < 10) {
-                        loadCourse(course);
-                    }
-
-                    isTapping = false;
-                }, { passive: true });
-
-                // Rest of the container setup...
-                const canvasEl = document.createElement('canvas');
-                canvasEl.className = 'thumbnail-canvas';
-                canvasEl.width = THUMBNAIL_WIDTH;
-                canvasEl.height = THUMBNAIL_HEIGHT;
-
-                const starsEl = document.createElement('div');
-                starsEl.className = 'thumbnail-stars';
-                starsEl.innerHTML = getStarRatingHTML(course.highScore || 0);
-
-                container.appendChild(canvasEl);
-                container.appendChild(starsEl);
-                sidebarContent.appendChild(container);
-
-                // Draw after appending
-                drawThumbnail(canvasEl, course.player1Path);
-
-                // Drag handlers
-                container.addEventListener('dragstart', (e) => {
-                    e.target.classList.add('dragging');
-                    handleThumbnailDragStart(e);
-                });
-
-                container.addEventListener('dragend', (e) => {
-                    e.target.classList.remove('dragging');
-                    handleThumbnailDragEnd(e);
-                });
-            });
-
-        } catch (error) {
-            console.error("Error loading saved courses for sidebar:", error);
-            sidebarContent.innerHTML = '<p style="color: red;">Radan lataus epäonnistui.</p>';
-        }
-    }
+    
 
     // --- Course Loading/Deleting ---
-
-    function loadCourse(courseData) {
-        if (!courseData || !courseData.player1Path) {
-            console.error("Invalid course data provided for loading.");
-            return;
-        }
-        console.log(`Loading course: ${courseData.name} (ID: ${courseData.id})`);
-
-        // Reset current game state partially (like resetGame but keep sidebar open?)
-        // Hide screens first
-        document.getElementById('victoryScreen').style.display = 'none';
-        document.getElementById('defeatScreen').style.display = 'none';
-
-        // Reset relevant state vars
-        player1Path = courseData.player1Path; // Use the loaded path
-        smoothedPath = [...player1Path]; // Set smoothedPath as well (assuming raw path is used)
-        player2Path = [];
-        isDrawing = false;
-        lastPlayedProgressMilestone = 0;
-        startMarker = null; // Will be recalculated
-        endMarker = null;   // Will be recalculated
-        progressMarkers = [];
-        currentActiveSegmentIndex = 0;
-        maxAllowedPathLength = 0;
-        currentPathLength = 0;
-        fuelConsumed = 0;
-        previousCarPosition = null;
-        defeatFlagged = false;
-        carConfig = null;
-
-        // Generate decorations for the loaded path
-        const decorationDensity = 5; // Same density as when P1 finishes drawing
-        const decorationOffset = P1_WIDTH * 1.5; // Same offset as when P1 finishes
-
-        // First generate all decorations
-        let allDecorations = generateDecorationsForPath(player1Path, decorationDensity, decorationOffset);
-
-        // Then filter out decorations that are too close to the path
-        const minDistanceToPath = P1_WIDTH * 1.2; // Same threshold as used during P1 drawing
-        decorations = allDecorations.filter(decoration => {
-            // Check distance to all path segments
-            for (let i = 0; i < player1Path.length - 1; i++) {
-                const segmentStart = player1Path[i];
-                const segmentEnd = player1Path[i + 1];
-                const distance = pointLineSegmentDistance(decoration.position, segmentStart, segmentEnd);
-                if (distance < minDistanceToPath) {
-                    return false; // Remove decoration if too close to any segment
-                }
-            }
-            return true; // Keep decoration if it's far enough from all segments
-        });
-
-        tireMarks = [];
-
-        // IMPORTANT: Set the session high score from the loaded course
-        currentSessionHighScore = courseData.highScore || 0;
-        currentSessionBestPlayer2Path = courseData.highScorePlayer2Path || [];
-
-        // Update controls visibility
-        doneButton.style.display = 'none'; // P1 is done by loading
-        saveCourseButton.style.display = 'none'; // Hide P1 save button too
-        resetButton.style.display = 'inline-block';
-
-        // Stop any ongoing car animation/sound
-        if (carAnimationFrame) cancelAnimationFrame(carAnimationFrame);
-        carAnimationFrame = null;
-        if (engineSound) { engineSound.stop(); engineSound = null; }
-        carProgress = 0; carPosition = { x: 0, y: 0 }; carAngle = 0; carTrail = []; isScreeching = false;
-
-        // Now, trigger the logic similar to handleP1Done to set up P2 phase
-        // This recalculates markers, length, decorations based on the loaded player1Path
-        handleP1Done(); // This sets gameState to 'P2_WAITING' and redraws
-
-        closeSidebar(); // Close sidebar after loading
-        statusDiv.textContent = `Ladattu rata: ${courseData.name}. Pelaaja 2: Seuraa polkua.`;
-
-        // Add tracking of loaded course ID
-        window.currentLoadedCourseId = courseData.id;
-    }
-
-    function deleteCourse(courseId) {
-        if (!courseId) return;
-        console.log(`Attempting to delete course: ${courseId}`);
-        try {
-            let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-            const initialLength = savedCourses.length;
-            savedCourses = savedCourses.filter(course => course.id !== courseId);
-
-            if (savedCourses.length < initialLength) {
-                localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
-                console.log(`Course ${courseId} deleted.`);
-                // Refresh the sidebar to remove the thumbnail visually
-                populateSavedCoursesSidebar();
-                return true; // Indicate success
-            } else {
-                console.warn(`Course ${courseId} not found for deletion.`);
-                return false;
-            }
-        } catch (error) {
-            console.error("Error deleting course:", error);
-            alert("Radan poistaminen epäonnistui.");
-            return false;
-        }
-    }
-
-    // --- Drag and Drop Handlers ---
-
-    function handleThumbnailDragStart(e) {
-        // Check if it's a valid thumbnail container
-        if (e.target.classList.contains('thumbnail-container')) {
-            draggedCourseId = e.target.dataset.courseId;
-            e.dataTransfer.setData('text/plain', draggedCourseId);
-            e.dataTransfer.effectAllowed = 'move'; // Indicate moving is allowed
-            showTrashCan(); // Show trashcan when dragging starts
-            // Optional: Add a dragging style to the thumbnail
-            e.target.style.opacity = '0.5';
-        } else {
-            e.preventDefault(); // Prevent dragging if not the container
-        }
-    }
-
-    function handleThumbnailDragEnd(e) {
-        // Check if it's a valid thumbnail container ending drag
-        if (e.target.classList.contains('thumbnail-container')) {
-            // Restore appearance
-            e.target.style.opacity = '1';
-            hideTrashCan(); // Always hide trashcan when drag ends
-            draggedCourseId = null; // Clear the dragged ID
-        }
-    }
-
-    function handleCanvasDragOver(e) {
-        e.preventDefault(); // Necessary to allow dropping
-        e.dataTransfer.dropEffect = 'move'; // Indicate dropping is possible
-        // Optional: Add visual feedback to canvas (e.g., border)
-    }
-
-    function handleCanvasDrop(e) {
-        e.preventDefault();
-        const courseId = e.dataTransfer.getData('text/plain');
-        if (courseId) {
-            try {
-                const savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-                const courseToLoad = savedCourses.find(c => c.id === courseId);
-                if (courseToLoad) {
-                    loadCourse(courseToLoad);
-                } else {
-                    console.error(`Course with ID ${courseId} not found in localStorage.`);
-                }
-            } catch (error) {
-                console.error("Error loading course on drop:", error);
-            }
-        }
-        hideTrashCan(); // Hide trash after drop
-    }
-
-    function handleTrashDragOver(e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        trashCan.classList.add('active-drop'); // Highlight trashcan
-    }
-
-    function handleTrashDragLeave(e) {
-        trashCan.classList.remove('active-drop'); // Remove highlight
-    }
-
-    function handleTrashDrop(e) {
-        e.preventDefault();
-        const courseId = e.dataTransfer.getData('text/plain');
-        if (courseId) {
-            // Optional: Add a confirmation dialog
-            // if (confirm(`Haluatko varmasti poistaa tämän radan?`)) {
-            deleteCourse(courseId);
-            // }
-        }
-        hideTrashCan(); // Hide trashcan after drop
-    }
-
-    // NEW function for P1 saving during drawing phase
-    function saveP1CourseNow() {
-        if (gameState !== 'P1_DRAWING') {
-            console.warn("Attempted to save P1 course outside of P1 drawing phase.");
-            return;
-        }
-
-        if (!player1Path || player1Path.length < 2) {
-            alert("Rataa ei voi tallentaa, koska polku on liian lyhyt!");
-            return;
-        }
-
-        // Use the current P1 path for hashing and saving
-        const coursePathToSave = [...player1Path]; // Create a copy
-        const courseId = hashPath(coursePathToSave);
-        const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-
-        const newCourseData = {
-            id: courseId,
-            name: courseName,
-            player1Path: coursePathToSave,
-            highScore: 0, // No high score yet
-            highScorePlayer2Path: [] // No P2 path yet
-        };
-
-        try {
-            let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-            const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
-
-            if (existingCourseIndex !== -1) {
-                // Course with this exact path already exists
-                alert("Tämä rata on jo tallennettu.");
-                // Optional: Briefly change button text
-                saveP1CourseButton.textContent = 'Jo tallennettu';
-                setTimeout(() => { saveP1CourseButton.textContent = 'Tallenna rata'; }, 1500);
-            } else {
-                // --- Add new course ---
-                savedCourses.push(newCourseData);
-                localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
-                console.log(`P1 course saved: ${newCourseData.name}`, newCourseData);
-
-                // Provide feedback on the button
-                saveP1CourseButton.textContent = 'Tallennettu!';
-                saveP1CourseButton.disabled = true;
-                setTimeout(() => {
-                    saveP1CourseButton.textContent = 'Tallenna rata';
-                    saveP1CourseButton.disabled = false;
-                }, 1500); // Reset after 1.5 seconds
-
-                // If the sidebar is open, refresh it
-                if (savedCoursesSidebar.classList.contains('visible')) {
-                    populateSavedCoursesSidebar();
-                }
-            }
-
-        } catch (error) {
-            console.error("Error saving P1 course to localStorage:", error);
-            alert("Radan tallentamisessa tapahtui virhe.");
-        }
-    }
-
-    // Add these hashing functions (if not already present from previous steps)
-    // function simpleHash(str) { ... }
-    // function hashPath(path) { ... }
-
-    // --- Course Loading/Deleting ---
-    // ... (existing loadCourse code before button visibility) ...
     doneButton.style.display = 'none'; // P1 is done by loading
     saveCourseButton.style.display = 'none'; // Hide P1 save button too
     resetButton.style.display = 'inline-block';
-    // ... (rest of loadCourse code) ...
-
-    // --- Initialization ---
-    // ...
 
     // Setup Event Listeners
-    // ... (existing canvas, doneButton, resetButton listeners) ...
     saveCourseButton.addEventListener('click', saveCourseNow); // Add listener for the new button
 
-    // ... (existing width slider, window resize, game screen button listeners) ...
-
-    // Add listeners for new UI elements (sidebar, etc.)
-    // ...
-
-    // Add Drag/Drop listeners
-    // ...
-
-    // Initial setup
-    // ...
-
-    // Add new function for particle animation
-    function animateParticles() {
+    const animateParticles = () => {
         // Clear the canvas and redraw everything
         redrawAll();
 
@@ -2122,119 +2049,7 @@ export function initializeGame() {
             // If no particles left, ensure we clean up
             particleAnimationFrame = null;
         }
-    }
-
-    // NEW function for saving course during any phase
-    function saveCourseNow() {
-        if (gameState !== 'P1_DRAWING' && gameState !== 'SHOWING_SCORE') {
-            console.warn("Attempted to save course outside of valid phases.");
-            return;
-        }
-
-        const saveButton = gameState === 'P1_DRAWING' ?
-            document.getElementById('saveCourseButton') :
-            document.getElementById('victorySaveButton');
-
-        // Handle P1 drawing phase saving as before
-        if (gameState === 'P1_DRAWING') {
-            if (!player1Path || player1Path.length < 2) {
-                alert("Rataa ei voi tallentaa, koska polku on liian lyhyt!");
-                return;
-            }
-
-            // Use the current P1 path for hashing and saving
-            const coursePathToSave = [...player1Path]; // Create a copy
-            const courseId = hashPath(coursePathToSave);
-            const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-
-            const newCourseData = {
-                id: courseId,
-                name: courseName,
-                player1Path: coursePathToSave,
-                highScore: 0, // No high score yet
-                highScorePlayer2Path: [] // No P2 path yet
-            };
-
-            try {
-                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-                const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
-
-                if (existingCourseIndex !== -1) {
-                    // Course with this exact path already exists
-                    alert("Tämä rata on jo tallennettu.");
-                    saveButton.textContent = 'Jo tallennettu';
-                    setTimeout(() => { saveButton.textContent = 'Tallenna rata'; }, 1500);
-                } else {
-                    // --- Add new course ---
-                    savedCourses.push(newCourseData);
-                    localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
-                    console.log(`P1 course saved: ${newCourseData.name}`, newCourseData);
-
-                    // Provide feedback on the button
-                    saveButton.textContent = 'Tallennettu!';
-                    saveButton.disabled = true;
-                    setTimeout(() => {
-                        saveButton.textContent = 'Tallenna rata';
-                        saveButton.disabled = false;
-                    }, 1500);
-
-                    // If the sidebar is open, refresh it
-                    if (savedCoursesSidebar.classList.contains('visible')) {
-                        populateSavedCoursesSidebar();
-                    }
-                }
-            } catch (error) {
-                console.error("Error saving P1 course to localStorage:", error);
-                alert("Radan tallentamisessa tapahtui virhe.");
-            }
-        }
-        // Handle victory screen saving (only for new courses)
-        else if (gameState === 'SHOWING_SCORE') {
-            if (!smoothedPath || smoothedPath.length < 2) {
-                console.error("Cannot save: No valid Player 1 path exists.");
-                alert("Rataa ei voi tallentaa, koska Pelaaja 1:n polkua ei ole piirretty kunnolla.");
-                return;
-            }
-
-            try {
-                let savedCourses = JSON.parse(localStorage.getItem('savedCourses') || '[]');
-
-                // Only handle saving new courses - highscores are updated automatically
-                if (!window.currentLoadedCourseId) {
-                    const courseId = hashPath(smoothedPath);
-                    const courseName = `Rata ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-                    const newCourseData = {
-                        id: courseId,
-                        name: courseName,
-                        player1Path: smoothedPath,
-                        highScore: currentSessionHighScore,
-                        highScorePlayer2Path: currentSessionBestPlayer2Path
-                    };
-
-                    const existingCourseIndex = savedCourses.findIndex(course => course.id === courseId);
-                    if (existingCourseIndex === -1) {
-                        savedCourses.push(newCourseData);
-                        localStorage.setItem('savedCourses', JSON.stringify(savedCourses));
-                        saveButton.textContent = 'Tallennettu!';
-                        saveButton.disabled = true;
-                    } else {
-                        saveButton.textContent = 'Rata jo tallennettu';
-                        saveButton.disabled = true;
-                    }
-
-                    // If sidebar is open, refresh it
-                    if (savedCoursesSidebar.classList.contains('visible')) {
-                        populateSavedCoursesSidebar();
-                    }
-                }
-            } catch (error) {
-                console.error("Error saving course:", error);
-                alert("Radan tallentamisessa tapahtui virhe.");
-                saveButton.textContent = 'Tallennus epäonnistui';
-                saveButton.disabled = false;
-            }
-        }
-    }
+    };
 
     // Initialize the game
     document.addEventListener('DOMContentLoaded', (event) => {
