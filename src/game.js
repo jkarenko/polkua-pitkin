@@ -1,4 +1,3 @@
-// Import existing modules
 import {drawCar, createCar, CAR_CONSTANTS} from './car.js';
 import {
     calculateCurvature,
@@ -172,6 +171,7 @@ export function initializeGame() {
         gameStates.currentWheelAngle = carState.currentWheelAngle;
         gameStates.currentSpeed = carState.currentSpeed;
         gameStates.isSkidding = carState.isSkidding; // Update isSkidding flag for sound effects
+        gameStates.fuelConsumed = carState.fuelConsumed; // Update fuel consumed for the fuel gauge
         // Note: carState.trail and carState.tireMarks are updated by reference
 
         // Handle result from updateCarPhysics
